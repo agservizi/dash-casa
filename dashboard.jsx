@@ -39,6 +39,51 @@ const Tip = ({label, children, pos='bottom'}) => {
   </span>
 }
 
+// ── CUSTOM SELECT (bottom-sheet pannello) ───────────────────────────────────────
+const Sel = ({value, onChange, options, style, placeholder}) => {
+  const [open, setOpen] = useState(false)
+  const t = useT()
+  const opts = options.map(o => typeof o === 'string' ? {value:o, label:o} : o)
+  const sel = opts.find(o => o.value === value)
+  const pick = v => { onChange({target:{value:v}}); setOpen(false) }
+  return <>
+    <div onClick={()=>setOpen(true)}
+      style={{...style, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer', userSelect:'none', gap:6}}>
+      <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,color:sel?undefined:t.textMut}}>{sel ? sel.label : (placeholder||'Seleziona...')}</span>
+      <Fa icon='fa-solid fa-chevron-down' style={{fontSize:10,flexShrink:0,color:t.textMut}} />
+    </div>
+    <AnimatePresence>
+      {open && (
+        <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+          onClick={()=>setOpen(false)}
+          style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.35)',zIndex:9998}}>
+          <motion.div initial={{y:'100%'}} animate={{y:0}} exit={{y:'100%'}} transition={{type:'spring',stiffness:300,damping:30}}
+            onClick={e=>e.stopPropagation()}
+            style={{position:'absolute',bottom:0,left:0,right:0,background:t.cardBg,borderRadius:'20px 20px 0 0',
+              padding:'12px 16px 24px',boxShadow:'0 -8px 30px rgba(0,0,0,0.18)',maxHeight:'55vh',display:'flex',flexDirection:'column'}}>
+            <div style={{width:36,height:4,borderRadius:2,background:t.border,margin:'0 auto 12px',flexShrink:0}} />
+            <p style={{margin:'0 0 12px',fontSize:14,fontWeight:700,color:t.text,textAlign:'center'}}>{placeholder||'Seleziona'}</p>
+            <div style={{overflowY:'auto',flex:1,display:'grid',gridTemplateColumns:opts.length<=4?'repeat(2,1fr)':'repeat(3,1fr)',gap:8}}>
+              {opts.map(o => {
+                const active = o.value === value
+                return (
+                  <motion.button key={o.value} whileTap={{scale:0.93}} onClick={()=>pick(o.value)}
+                    style={{display:'flex',alignItems:'center',justifyContent:'center',textAlign:'center',
+                      padding:'14px 8px',background:active?'#3B82F618':t.tagBg,
+                      border:active?'2px solid #3B82F6':'2px solid transparent',
+                      borderRadius:14,cursor:'pointer',transition:'all 0.15s',minHeight:48}}>
+                    <span style={{fontSize:13,fontWeight:active?700:500,color:active?'#3B82F6':t.textSec,lineHeight:1.3}}>{o.label}</span>
+                  </motion.button>
+                )
+              })}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </>
+}
+
 // ── CONSTANTS ──────────────────────────────────────────────────────────────────
 const CATEGORIE_SPESE_DEFAULT    = ['Casa','Spesa','Bollette','Trasporti','Salute','Intrattenimento','Extra']
 const CATEGORIE_SCADENZE_DEFAULT = ['Assicurazione','Bollo','Manutenzione','Documento','Abbonamento','Altro']
@@ -46,6 +91,204 @@ const STANZE     = ['Cucina','Bagno','Soggiorno','Camera','Giardino','Garage','G
 const MESI       = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic']
 const MESI_FULL  = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const GG_SETT    = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom']
+
+// ── CUSTOM DATE PICKER (bottom-sheet calendario) ────────────────────────────────
+const DatePick = ({value, onChange, style, placeholder}) => {
+  const [open, setOpen] = useState(false)
+  const t = useT()
+  const today = new Date()
+  const parsed = value ? new Date(value+'T00:00:00') : today
+  const [viewY, setViewY] = useState(parsed.getFullYear())
+  const [viewM, setViewM] = useState(parsed.getMonth())
+
+  const fmtLabel = v => {
+    if (!v) return placeholder || 'Seleziona data'
+    const d = new Date(v+'T00:00:00')
+    return `${d.getDate()} ${MESI[d.getMonth()]} ${d.getFullYear()}`
+  }
+
+  const daysInMonth = new Date(viewY, viewM+1, 0).getDate()
+  const firstDay = (new Date(viewY, viewM, 1).getDay() + 6) % 7
+  const cells = []
+  for (let i = 0; i < firstDay; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+
+  const pick = day => {
+    const v = `${viewY}-${String(viewM+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+    onChange({target:{value:v}})
+    setOpen(false)
+  }
+  const prev = () => { if (viewM===0){setViewM(11);setViewY(y=>y-1)} else setViewM(m=>m-1) }
+  const next = () => { if (viewM===11){setViewM(0);setViewY(y=>y+1)} else setViewM(m=>m+1) }
+  const selDay = value ? +value.split('-')[2] : null
+  const selM = value ? +value.split('-')[1]-1 : null
+  const selY = value ? +value.split('-')[0] : null
+  const isToday = (d) => d===today.getDate() && viewM===today.getMonth() && viewY===today.getFullYear()
+
+  return <>
+    <div onClick={()=>{setOpen(true);if(value){const p=new Date(value+'T00:00:00');setViewY(p.getFullYear());setViewM(p.getMonth())}}}
+      style={{...style, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer', userSelect:'none', gap:6}}>
+      <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,color:value?undefined:t.textMut}}>{fmtLabel(value)}</span>
+      <Fa icon='fa-solid fa-calendar-days' style={{fontSize:12,flexShrink:0,color:t.textMut}} />
+    </div>
+    <AnimatePresence>
+      {open && (
+        <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+          onClick={()=>setOpen(false)}
+          style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.35)',zIndex:9998}}>
+          <motion.div initial={{y:'100%'}} animate={{y:0}} exit={{y:'100%'}} transition={{type:'spring',stiffness:300,damping:30}}
+            onClick={e=>e.stopPropagation()}
+            style={{position:'absolute',bottom:0,left:0,right:0,background:t.cardBg,borderRadius:'20px 20px 0 0',
+              padding:'12px 16px 24px',boxShadow:'0 -8px 30px rgba(0,0,0,0.18)'}}>
+            <div style={{width:36,height:4,borderRadius:2,background:t.border,margin:'0 auto 12px'}} />
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
+              <motion.button whileTap={{scale:0.85}} onClick={prev} style={{background:'none',border:'none',cursor:'pointer',padding:8,fontSize:16,color:t.textSec}}>
+                <Fa icon='fa-solid fa-chevron-left' />
+              </motion.button>
+              <span style={{fontSize:15,fontWeight:700,color:t.text}}>{MESI_FULL[viewM]} {viewY}</span>
+              <motion.button whileTap={{scale:0.85}} onClick={next} style={{background:'none',border:'none',cursor:'pointer',padding:8,fontSize:16,color:t.textSec}}>
+                <Fa icon='fa-solid fa-chevron-right' />
+              </motion.button>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:6}}>
+              {GG_SETT.map(g=><div key={g} style={{textAlign:'center',fontSize:11,fontWeight:600,color:t.textMut,padding:4}}>{g}</div>)}
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3}}>
+              {cells.map((d,i) => {
+                if (!d) return <div key={'e'+i} />
+                const active = d===selDay && viewM===selM && viewY===selY
+                return (
+                  <motion.button key={i} whileTap={{scale:0.88}} onClick={()=>pick(d)}
+                    style={{width:'100%',aspectRatio:'1',display:'flex',alignItems:'center',justifyContent:'center',
+                      background:active?'#3B82F6':isToday(d)?'#3B82F615':'transparent',
+                      color:active?'white':isToday(d)?'#3B82F6':t.text,
+                      border:isToday(d)&&!active?'1.5px solid #3B82F6':'2px solid transparent',
+                      borderRadius:12,cursor:'pointer',fontSize:14,fontWeight:active||isToday(d)?700:400,transition:'all 0.12s'}}>
+                    {d}
+                  </motion.button>
+                )
+              })}
+            </div>
+            <motion.button whileTap={{scale:0.95}} onClick={()=>{const td=today.toISOString().slice(0,10);onChange({target:{value:td}});setOpen(false)}}
+              style={{marginTop:12,width:'100%',padding:10,background:t.tagBg,border:'none',borderRadius:10,cursor:'pointer',fontSize:13,fontWeight:600,color:'#3B82F6'}}>
+              Oggi
+            </motion.button>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </>
+}
+
+// ── CUSTOM MONTH PICKER (bottom-sheet mese/anno) ────────────────────────────────
+const MonthPick = ({value, onChange, style, placeholder}) => {
+  const [open, setOpen] = useState(false)
+  const t = useT()
+  const today = new Date()
+  const curY = value ? +value.split('-')[0] : today.getFullYear()
+  const curM = value ? +value.split('-')[1]-1 : today.getMonth()
+  const [viewY, setViewY] = useState(curY)
+
+  const fmtLabel = v => {
+    if (!v) return placeholder || 'Seleziona mese'
+    const [y,m] = v.split('-')
+    return `${MESI_FULL[+m-1]} ${y}`
+  }
+
+  const pick = m => {
+    const v = `${viewY}-${String(m+1).padStart(2,'0')}`
+    onChange({target:{value:v}})
+    setOpen(false)
+  }
+
+  return <>
+    <div onClick={()=>{setOpen(true);if(value)setViewY(+value.split('-')[0])}}
+      style={{...style, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer', userSelect:'none', gap:6}}>
+      <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,color:value?undefined:t.textMut}}>{fmtLabel(value)}</span>
+      <Fa icon='fa-solid fa-calendar-days' style={{fontSize:12,flexShrink:0,color:t.textMut}} />
+    </div>
+    <AnimatePresence>
+      {open && (
+        <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+          onClick={()=>setOpen(false)}
+          style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.35)',zIndex:9998}}>
+          <motion.div initial={{y:'100%'}} animate={{y:0}} exit={{y:'100%'}} transition={{type:'spring',stiffness:300,damping:30}}
+            onClick={e=>e.stopPropagation()}
+            style={{position:'absolute',bottom:0,left:0,right:0,background:t.cardBg,borderRadius:'20px 20px 0 0',
+              padding:'12px 16px 24px',boxShadow:'0 -8px 30px rgba(0,0,0,0.18)'}}>
+            <div style={{width:36,height:4,borderRadius:2,background:t.border,margin:'0 auto 12px'}} />
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
+              <motion.button whileTap={{scale:0.85}} onClick={()=>setViewY(y=>y-1)} style={{background:'none',border:'none',cursor:'pointer',padding:8,fontSize:16,color:t.textSec}}>
+                <Fa icon='fa-solid fa-chevron-left' />
+              </motion.button>
+              <span style={{fontSize:16,fontWeight:700,color:t.text}}>{viewY}</span>
+              <motion.button whileTap={{scale:0.85}} onClick={()=>setViewY(y=>y+1)} style={{background:'none',border:'none',cursor:'pointer',padding:8,fontSize:16,color:t.textSec}}>
+                <Fa icon='fa-solid fa-chevron-right' />
+              </motion.button>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
+              {MESI_FULL.map((m,i) => {
+                const active = i===curM && viewY===curY
+                const isCur = i===today.getMonth() && viewY===today.getFullYear()
+                return (
+                  <motion.button key={m} whileTap={{scale:0.93}} onClick={()=>pick(i)}
+                    style={{padding:'14px 8px',background:active?'#3B82F618':t.tagBg,
+                      border:active?'2px solid #3B82F6':isCur?'1.5px solid #3B82F6':'2px solid transparent',
+                      borderRadius:14,cursor:'pointer',transition:'all 0.15s'}}>
+                    <span style={{fontSize:13,fontWeight:active?700:isCur?600:500,color:active?'#3B82F6':isCur?'#3B82F6':t.textSec}}>{m}</span>
+                  </motion.button>
+                )
+              })}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </>
+}
+
+// ── CUSTOM INPUT (styled) ───────────────────────────────────────────────────────
+const Inp = ({style, onFocus, onBlur, ...props}) => {
+  const [focused, setFocused] = useState(false)
+  const t = useT()
+  return <input {...props}
+    style={{padding:'8px 12px',border:`1.5px solid ${focused?'#3B82F6':t.inputBorder}`,
+      borderRadius:10,fontSize:14,color:t.text,outline:'none',background:t.inputBg,
+      width:'100%',boxSizing:'border-box',transition:'border-color 0.2s,box-shadow 0.2s',
+      ...(focused?{boxShadow:'0 0 0 3px rgba(59,130,246,0.08)'}:{}),fontFamily:'inherit',...style}}
+    onFocus={e=>{setFocused(true);onFocus?.(e)}}
+    onBlur={e=>{setFocused(false);onBlur?.(e)}} />
+}
+
+// ── CUSTOM TOGGLE (switch) ──────────────────────────────────────────────────────
+const Chk = ({checked, onChange, label, style}) => {
+  const t = useT()
+  return <div onClick={()=>onChange({target:{checked:!checked}})}
+    style={{display:'inline-flex',alignItems:'center',gap:10,cursor:'pointer',userSelect:'none',...style}}>
+    <motion.div animate={{background:checked?'#3B82F6':(t.border||'#CBD5E1')}}
+      style={{width:44,height:24,borderRadius:12,position:'relative',flexShrink:0}}>
+      <motion.div animate={{x:checked?20:2}} transition={{type:'spring',stiffness:500,damping:30}}
+        style={{width:20,height:20,borderRadius:10,background:'white',position:'absolute',top:2,
+          boxShadow:'0 1px 3px rgba(0,0,0,0.2)'}} />
+    </motion.div>
+    {label && <span style={{fontSize:13,color:t.textSec}}>{label}</span>}
+  </div>
+}
+
+// ── CUSTOM TEXTAREA (styled) ────────────────────────────────────────────────────
+const Txa = ({style, onFocus, onBlur, ...props}) => {
+  const [focused, setFocused] = useState(false)
+  const t = useT()
+  return <textarea {...props}
+    style={{padding:'10px 12px',border:`1.5px solid ${focused?'#3B82F6':t.inputBorder}`,
+      borderRadius:10,fontSize:14,color:t.text,outline:'none',background:t.inputBg,
+      width:'100%',boxSizing:'border-box',transition:'border-color 0.2s,box-shadow 0.2s',
+      resize:'vertical',fontFamily:'inherit',
+      ...(focused?{boxShadow:'0 0 0 3px rgba(59,130,246,0.08)'}:{}),...style}}
+    onFocus={e=>{setFocused(true);onFocus?.(e)}}
+    onBlur={e=>{setFocused(false);onBlur?.(e)}} />
+}
+
 const PRIORITA_ORD = { Alta:0, Media:1, Bassa:2 }
 const NOTE_COLORI  = ['#FEF3C7','#DBEAFE','#D1FAE5','#FCE7F3','#F3E8FF','#FEE2E2']
 const RUOLI_CONTATTI = ['Idraulico','Elettricista','Medico','Veterinario','Giardiniere','Amministratore','Altro']
@@ -61,10 +304,14 @@ const INITIAL = {
   spese:[], scadenze:[], attivita:[], consumi:[],
   membrifamiglia:['Carmine','Partner','Bambino'],
   budget:2000,
+  budgetCategorie:{},
+  conti:[{id:1,nome:'Conto principale',saldo:0}],
   entrateMensili:0,
   stipendi:[],
   note:[], contatti:[], inventario:[],
   accantonamenti:[],
+  rimborsi:[],
+  badges:[],
   categorieSpese:[...CATEGORIE_SPESE_DEFAULT],
   categorieScadenze:[...CATEGORIE_SCADENZE_DEFAULT],
   goalRisparmio:500,
@@ -115,10 +362,10 @@ const catCol = (cat) => COLORI_CAT[cat] || EXTRA_COLORS[Math.abs([...cat].reduce
 
 function scadCol(data) {
   const gg = Math.ceil((new Date(data)-new Date())/864e5)
-  if (gg<0)   return {color:'#EF4444',label:'Scaduta',bg:'#FEF2F2'}
-  if (gg<=7)  return {color:'#F59E0B',label:`${gg}g`, bg:'#FFFBEB'}
-  if (gg<=30) return {color:'#3B82F6',label:`${gg}g`, bg:'#EFF6FF'}
-  return        {color:'#10B981',label:`${gg}g`, bg:'#ECFDF5'}
+  if (gg<0)   return {color:'#EF4444',label:'Scaduta',bg:'#EF444415'}
+  if (gg<=7)  return {color:'#F59E0B',label:`${gg}g`, bg:'#F59E0B15'}
+  if (gg<=30) return {color:'#3B82F6',label:`${gg}g`, bg:'#3B82F615'}
+  return        {color:'#10B981',label:`${gg}g`, bg:'#10B98115'}
 }
 
 function ultimi6()  { return Array.from({length:6}, (_,i)=>{ const d=new Date(); d.setMonth(d.getMonth()-(5-i));  return d.toISOString().slice(0,7) }) }
@@ -182,10 +429,219 @@ function calcolaDebiti(spese, membri) {
   spese.filter(s=>s.pagatoDa && s.condivisa).forEach(s => {
     const imp = +s.importo
     if (pagato[s.pagatoDa] !== undefined) pagato[s.pagatoDa] += imp
-    const perPersona = imp / membri.length
-    membri.forEach(m => { quota[m] += perPersona })
+    if (s.splitQuote && Object.keys(s.splitQuote).length) {
+      Object.entries(s.splitQuote).forEach(([m, pct]) => { if (quota[m] !== undefined) quota[m] += imp * pct / 100 })
+    } else {
+      const perPersona = imp / membri.length
+      membri.forEach(m => { quota[m] += perPersona })
+    }
   })
   return membri.map(m => ({ nome:m, pagato:pagato[m]||0, quota:quota[m]||0, saldo:(pagato[m]||0)-(quota[m]||0) }))
+}
+
+// Calcola trasferimenti ottimali (chi deve pagare chi)
+function calcolaTrasferimenti(spese, membri) {
+  const debiti = calcolaDebiti(spese, membri)
+  const creditori = debiti.filter(d => d.saldo > 0.5).map(d => ({...d})).sort((a,b) => b.saldo - a.saldo)
+  const debitori = debiti.filter(d => d.saldo < -0.5).map(d => ({...d, saldo: -d.saldo})).sort((a,b) => b.saldo - a.saldo)
+  const trasf = []
+  let ci = 0, di = 0
+  while (ci < creditori.length && di < debitori.length) {
+    const min = Math.min(creditori[ci].saldo, debitori[di].saldo)
+    if (min > 0.5) trasf.push({ da: debitori[di].nome, a: creditori[ci].nome, importo: Math.round(min * 100) / 100 })
+    creditori[ci].saldo -= min; debitori[di].saldo -= min
+    if (creditori[ci].saldo < 0.5) ci++
+    if (debitori[di].saldo < 0.5) di++
+  }
+  return trasf
+}
+
+// Rileva spese potenzialmente ricorrenti
+function rilevaRicorrenti(spese) {
+  const byDesc = {}
+  spese.forEach(s => {
+    if (s.ricorrente) return
+    const key = s.descrizione?.toLowerCase().trim()
+    if (!key) return
+    const mese = s.data?.slice(0, 7)
+    if (!byDesc[key]) byDesc[key] = {}
+    if (!byDesc[key][mese]) byDesc[key][mese] = +s.importo
+  })
+  const suggerimenti = []
+  Object.entries(byDesc).forEach(([desc, mesi]) => {
+    const numMesi = Object.keys(mesi).length
+    if (numMesi >= 3) {
+      const importi = Object.values(mesi)
+      const media = importi.reduce((s, v) => s + v, 0) / importi.length
+      const variazione = Math.max(...importi) - Math.min(...importi)
+      if (variazione / media < 0.25) suggerimenti.push({ descrizione: desc, mesi: numMesi, importoMedio: Math.round(media * 100) / 100 })
+    }
+  })
+  return suggerimenti
+}
+
+// Spese ricorrenti mancanti nel mese corrente
+function ricorrentiMancanti(spese, meseCorr) {
+  const ricorrenti = spese.filter(s => s.ricorrente)
+  const descs = [...new Set(ricorrenti.map(s => s.descrizione?.toLowerCase().trim()).filter(Boolean))]
+  const speseMese = spese.filter(s => s.data?.startsWith(meseCorr))
+  return descs.filter(d => !speseMese.some(s => s.descrizione?.toLowerCase().trim() === d)).map(d => {
+    const orig = ricorrenti.find(s => s.descrizione?.toLowerCase().trim() === d)
+    return { descrizione: orig?.descrizione || d, importo: orig?.importo || 0 }
+  })
+}
+
+// Badge definitions
+const BADGE_DEFS = [
+  { id:'prima-spesa', nome:'Prima Spesa', desc:'Hai registrato la tua prima spesa', icon:'fa-solid fa-star', color:'#F59E0B', check:d=>d.spese.length>=1 },
+  { id:'spese-50', nome:'Tracciatore', desc:'50 spese tracciate', icon:'fa-solid fa-fire', color:'#EF4444', check:d=>d.spese.length>=50 },
+  { id:'spese-100', nome:'Tracciatore Pro', desc:'100 spese tracciate', icon:'fa-solid fa-fire-flame-curved', color:'#DC2626', check:d=>d.spese.length>=100 },
+  { id:'spese-500', nome:'Maestro dei Conti', desc:'500 spese tracciate', icon:'fa-solid fa-crown', color:'#8B5CF6', check:d=>d.spese.length>=500 },
+  { id:'sotto-budget-1', nome:'Risparmiatore', desc:'Sotto budget per 1 mese', icon:'fa-solid fa-piggy-bank', color:'#10B981', check:d=>{ const t=totMese(d.spese,mc()); return t>0&&t<d.budget } },
+  { id:'sotto-budget-3', nome:'Risparmiatore d\'Oro', desc:'Sotto budget 3 mesi di fila', icon:'fa-solid fa-medal', color:'#F59E0B', check:d=>[0,1,2].every(i=>{const m=new Date();m.setMonth(m.getMonth()-i);const k=m.toISOString().slice(0,7);const t=totMese(d.spese,k);return t>0&&t<d.budget}) },
+  { id:'prima-scadenza', nome:'Puntuale', desc:'Prima scadenza gestita', icon:'fa-solid fa-calendar-check', color:'#3B82F6', check:d=>d.scadenze.some(s=>s.gestita) },
+  { id:'note-10', nome:'Annotatore', desc:'10 note create', icon:'fa-solid fa-pen-fancy', color:'#F97316', check:d=>d.note.length>=10 },
+  { id:'accantonamento-completo', nome:'Obiettivo Raggiunto', desc:'Accantonamento completato al 100%', icon:'fa-solid fa-trophy', color:'#FFD700', check:d=>(d.accantonamenti||[]).some(a=>(a.accantonato||0)>=(a.obiettivo||1)&&a.obiettivo>0) },
+  { id:'famiglia-3', nome:'Famiglia Unita', desc:'3+ membri registrati', icon:'fa-solid fa-users', color:'#6366F1', check:d=>d.membrifamiglia.length>=3 },
+  { id:'inventario-5', nome:'Casa Ordinata', desc:'5+ oggetti in inventario', icon:'fa-solid fa-boxes-stacked', color:'#0EA5E9', check:d=>d.inventario.length>=5 },
+  { id:'rimborso-1', nome:'Conti Pari', desc:'Primo rimborso effettuato', icon:'fa-solid fa-handshake', color:'#14B8A6', check:d=>(d.rimborsi||[]).length>=1 },
+]
+
+// Previsione flusso di cassa
+function previsioneFlusso(data, giorniAvanti=90) {
+  const oggi = new Date()
+  const meseCorr = mc()
+  const stipendioMese = getStipendioMese(data, meseCorr)
+  const speseCorr = totMese(data.spese, meseCorr)
+  const ggPassati = oggi.getDate()
+  const speseGiorno = ggPassati > 0 ? speseCorr / ggPassati : 0
+  const quotaAcc = (data.accantonamenti||[]).reduce((s,a)=>{
+    if(a.percentuale&&stipendioMese>0) return s+(stipendioMese*a.percentuale/100)
+    return s+(a.importoManuale||0)
+  },0)
+  let saldo = stipendioMese - speseCorr - quotaAcc
+  const punti = []
+  for (let i=0;i<=giorniAvanti;i++) {
+    const d = new Date(oggi); d.setDate(d.getDate()+i)
+    const iso = d.toISOString().slice(0,10)
+    if (i>0) {
+      if (d.getDate()===1) { saldo += stipendioMese; saldo -= quotaAcc }
+      saldo -= speseGiorno
+      data.scadenze.filter(s=>!s.gestita&&s.data===iso&&s.importoStimato).forEach(s=>{ saldo -= +s.importoStimato })
+    }
+    if (i%(giorniAvanti>60?7:giorniAvanti>30?3:1)===0||i===giorniAvanti) {
+      punti.push({ data:iso, label:`${d.getDate()}/${d.getMonth()+1}`, saldo:Math.round(saldo), giorno:i })
+    }
+  }
+  return punti
+}
+
+// Costi per stanza
+function costiPerStanza(spese, mese) {
+  const per = {}
+  spese.filter(s=>s.stanza&&s.data?.startsWith(mese)).forEach(s=>{ per[s.stanza]=(per[s.stanza]||0)+ +s.importo })
+  return Object.entries(per).map(([stanza,totale])=>({stanza,totale})).sort((a,b)=>b.totale-a.totale)
+}
+
+// OCR - Load Tesseract.js from CDN
+async function loadTesseract() {
+  if (window.Tesseract) return window.Tesseract
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'
+    s.onload = () => resolve(window.Tesseract)
+    s.onerror = () => reject(new Error('Impossibile caricare OCR'))
+    document.head.appendChild(s)
+  })
+}
+
+// Estrai importo e data da testo OCR
+function parseOCR(text) {
+  const result = {}
+  // Cerca importi (€, EUR, TOTALE)
+  const importoPatterns = [
+    /(?:totale|total|tot\.?)\s*[:=]?\s*[€$]?\s*(\d+[.,]\d{2})/i,
+    /[€]\s*(\d+[.,]\d{2})/,
+    /(\d+[.,]\d{2})\s*[€]/,
+    /(?:importo|amount)\s*[:=]?\s*[€$]?\s*(\d+[.,]\d{2})/i,
+  ]
+  for (const p of importoPatterns) {
+    const m = text.match(p)
+    if (m) { result.importo = m[1].replace(',','.'); break }
+  }
+  // Cerca date
+  const dataPatterns = [
+    /(\d{2})[\/\-.](\d{2})[\/\-.](\d{4})/,
+    /(\d{2})[\/\-.](\d{2})[\/\-.](\d{2})/,
+  ]
+  for (const p of dataPatterns) {
+    const m = text.match(p)
+    if (m) {
+      const anno = m[3].length===2 ? '20'+m[3] : m[3]
+      result.data = `${anno}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`
+      break
+    }
+  }
+  return result
+}
+
+// PDF Report Generation
+function generaReportPDF(data) {
+  const mese = mc()
+  const ml = MESI_FULL[new Date().getMonth()] + ' ' + new Date().getFullYear()
+  const spMese = data.spese.filter(s=>s.data?.startsWith(mese))
+  const totSpese = sum(spMese, s=>+s.importo)
+  const entrate = getStipendioMese(data, mese)
+  const saldo = entrate - totSpese
+  const perCat = {}
+  spMese.forEach(s=>{ perCat[s.categoria]=(perCat[s.categoria]||0)+ +s.importo })
+  const catSorted = Object.entries(perCat).sort((a,b)=>b[1]-a[1])
+  const top5 = [...spMese].sort((a,b)=>b.importo-a.importo).slice(0,5)
+  const mesePrev = mp()
+  const totPrev = totMese(data.spese, mesePrev)
+  const diffPerc = totPrev > 0 ? ((totSpese-totPrev)/totPrev*100).toFixed(1) : 0
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Report ${ml}</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;padding:32px;max-width:700px;margin:0 auto;color:#1E293B;background:white}
+h1{font-size:24px;margin-bottom:4px}h2{font-size:16px;margin:24px 0 10px;padding-bottom:6px;border-bottom:2px solid #E2E8F0}
+.subtitle{color:#64748B;font-size:13px;margin-bottom:20px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.kpi{padding:16px;border-radius:12px;text-align:center}.kpi .val{font-size:28px;font-weight:700}.kpi .lab{font-size:12px;color:#64748B;margin-top:2px}
+.bar-wrap{margin-bottom:8px}.bar-label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px}
+.bar{height:10px;background:#E2E8F0;border-radius:5px;overflow:hidden}.bar-fill{height:100%;border-radius:5px}
+.row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F1F5F9;font-size:13px}
+.footer{margin-top:32px;text-align:center;font-size:11px;color:#94A3B8}
+@media print{body{padding:20px}button{display:none!important}}
+</style></head><body>
+<h1>Report Mensile — Casa Nostra</h1>
+<p class="subtitle">${ml} · Generato il ${new Date().toLocaleDateString('it-IT')}</p>
+<div class="grid">
+  <div class="kpi" style="background:#ECFDF5"><div class="val" style="color:#059669">€ ${entrate.toFixed(0)}</div><div class="lab">Entrate</div></div>
+  <div class="kpi" style="background:#FEF2F2"><div class="val" style="color:#EF4444">€ ${totSpese.toFixed(0)}</div><div class="lab">Spese</div></div>
+  <div class="kpi" style="background:${saldo>=0?'#ECFDF5':'#FEF2F2'}"><div class="val" style="color:${saldo>=0?'#10B981':'#EF4444'}">€ ${saldo.toFixed(0)}</div><div class="lab">Saldo</div></div>
+  <div class="kpi" style="background:#EFF6FF"><div class="val" style="color:#3B82F6">${diffPerc>0?'+':''}${diffPerc}%</div><div class="lab">vs mese scorso</div></div>
+</div>
+<h2>Spese per Categoria</h2>
+${catSorted.map(([cat,val])=>`<div class="bar-wrap"><div class="bar-label"><span>${cat}</span><span style="font-weight:600">€ ${val.toFixed(0)} (${(val/totSpese*100).toFixed(0)}%)</span></div><div class="bar"><div class="bar-fill" style="width:${(val/totSpese*100).toFixed(0)}%;background:${COLORI_CAT[cat]||'#6B7280'}"></div></div></div>`).join('')}
+<h2>Top 5 Spese</h2>
+${top5.map(s=>`<div class="row"><span>${s.data} — ${s.descrizione}</span><span style="font-weight:600">€ ${(+s.importo).toFixed(2)}</span></div>`).join('')}
+<h2>Riepilogo</h2>
+<div class="row"><span>Budget mensile</span><span style="font-weight:600">€ ${data.budget}</span></div>
+<div class="row"><span>Spese totali</span><span style="font-weight:600;color:#EF4444">€ ${totSpese.toFixed(2)}</span></div>
+<div class="row"><span>Budget utilizzato</span><span style="font-weight:600">${(totSpese/data.budget*100).toFixed(0)}%</span></div>
+<div class="row"><span>Movimenti del mese</span><span style="font-weight:600">${spMese.length}</span></div>
+<div class="row"><span>Scadenze attive</span><span style="font-weight:600">${data.scadenze.filter(s=>!s.gestita).length}</span></div>
+<div class="row"><span>Attività aperte</span><span style="font-weight:600">${data.attivita.filter(a=>!a.completata).length}</span></div>
+<div style="margin-top:20px;text-align:center"><button onclick="window.print()" style="padding:10px 28px;background:#3B82F6;color:white;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-weight:600">Stampa / Salva PDF</button></div>
+<div class="footer">Casa Nostra — Dashboard Domestica</div></body></html>`
+
+  const w = window.open('', '_blank')
+  if (w) { w.document.write(html); w.document.close() }
+  else {
+    const blob = new Blob([html], {type:'text/html'})
+    const url = URL.createObjectURL(blob)
+    Object.assign(document.createElement('a'),{href:url,download:`report-${mese}.html`}).click()
+    URL.revokeObjectURL(url)
+  }
 }
 
 // ── RESPONSIVE HOOK ────────────────────────────────────────────────────────────
@@ -225,8 +681,9 @@ function NotifBadge({ count, color='#EF4444' }) {
 }
 
 function ProgBar({ pct, color }) {
+  const t = useT()
   return (
-    <div style={{height:8,background:'#E2E8F0',borderRadius:4,overflow:'hidden'}}>
+    <div style={{height:8,background:t.border,borderRadius:4,overflow:'hidden'}}>
       <motion.div initial={{width:0}} animate={{width:`${Math.min(pct,100)}%`}} transition={{duration:0.85,ease:'easeOut',delay:0.2}}
         style={{height:'100%',background:color,borderRadius:4}} />
     </div>
@@ -278,7 +735,7 @@ function getStipendioMese(data, mese) {
 }
 
 // ── HOME ──────────────────────────────────────────────────────────────────────
-function HomeTab({ data, setTab }) {
+function HomeTab({ data, setTab, updateData }) {
   const t = useT(); const S = makeS(t)
   const w = useWindowWidth(); const mob = w < 768
   const tmese = totMese(data.spese, mc())
@@ -321,7 +778,7 @@ function HomeTab({ data, setTab }) {
     {
       id:'spese', emoji:<Fa icon='fa-solid fa-wallet' />, title:'Spese del mese',
       value:`€ ${speseTotali.toFixed(0)}`, subtitle:`Budget € ${data.budget}${totConsumi>0?' (incl. bollette)':''}`,
-      color: perc>100?'#EF4444':'#3B82F6', bg: perc>100?'#FEF2F2':'#EFF6FF',
+      color: perc>100?'#EF4444':'#3B82F6', bg: perc>100?'#EF444415':'#3B82F615',
       extra: (
         <div style={{marginTop:10}}>
           <ProgBar pct={perc} color={perc>100?'#EF4444':perc>80?'#F59E0B':'#3B82F6'} />
@@ -337,26 +794,26 @@ function HomeTab({ data, setTab }) {
       id:'scadenze', emoji:<Fa icon='fa-regular fa-calendar-check' />, title:'Scadenze',
       value: sAlert>0?`${sAlert} scadute`:sImm>0?`${sImm} imminenti`:'Tutto ok',
       subtitle:`${data.scadenze.filter(s=>!s.gestita).length} attive`,
-      color: sAlert>0?'#EF4444':sImm>0?'#F59E0B':'#10B981', bg: sAlert>0?'#FEF2F2':sImm>0?'#FFFBEB':'#ECFDF5',
+      color: sAlert>0?'#EF4444':sImm>0?'#F59E0B':'#10B981', bg: sAlert>0?'#EF444415':sImm>0?'#F59E0B15':'#10B98115',
     },
     {
       id:'attivita', emoji:<Fa icon='fa-solid fa-list-check' />, title:'Lista attività',
       value:`${aAperte} da fare`, subtitle:`${aTot-aAperte} completate`,
-      color:'#10B981', bg:'#ECFDF5',
+      color:'#10B981', bg:'#10B98115',
       extra: aTot>0 ? <div style={{marginTop:10}}><ProgBar pct={((aTot-aAperte)/aTot)*100} color="#10B981" /></div> : null,
     },
     {
       id:'consumi', emoji:<Fa icon='fa-solid fa-bolt' />, title:'Consumi',
       value: tc!==null?`€ ${tc.toFixed(0)}`:'—',
       subtitle: uc?`${MESI[+uc.mese?.slice(5,7)-1]} ${uc.mese?.slice(0,4)}`:'Nessun dato',
-      color:'#8B5CF6', bg:'#F5F3FF',
+      color:'#8B5CF6', bg:'#8B5CF615',
       extra: tc!==null&&tc2!==null ? <div style={{marginTop:6}}><Delta curr={tc} prev={tc2} /></div> : null,
     },
     {
       id:'disponibile', tab:'stipendio', emoji:<Fa icon='fa-solid fa-coins' />, title:'Disponibile reale',
       value: entrate>0 ? `€ ${disponibileReale.toFixed(0)}` : '—',
       subtitle: entrate>0 ? `Stipendio € ${entrate.toFixed(0)}` : 'Registra lo stipendio',
-      color: disponibileReale>=0?'#10B981':'#EF4444', bg: disponibileReale>=0?'#ECFDF5':'#FEF2F2',
+      color: disponibileReale>=0?'#10B981':'#EF4444', bg: disponibileReale>=0?'#10B98115':'#EF444415',
       extra: entrate>0 ? (
         <div style={{marginTop:10}}>
           <ProgBar pct={Math.min(100, (speseTotali/entrate)*100)} color={speseTotali>entrate?'#EF4444':speseTotali/entrate>0.8?'#F59E0B':'#10B981'} />
@@ -386,7 +843,7 @@ function HomeTab({ data, setTab }) {
         id:'stipendio', emoji:<Fa icon='fa-solid fa-briefcase' />, title:'Stipendio',
         value: stipCorr ? `€ ${stipCorr.importo.toFixed(0)}` : (entrate > 0 ? `€ ${entrate.toFixed(0)}` : '—'),
         subtitle: stipCorr ? `${MESI[new Date().getMonth()]} ${new Date().getFullYear()}` : 'Non ancora versato',
-        color:'#059669', bg:'#ECFDF5',
+        color:'#059669', bg:'#05966915',
         extra: stipendi.length > 0 ? (
           <div style={{marginTop:6}}>
             <p style={{margin:0,fontSize:11,color:t.textMut}}>{stipendi.length} versament{stipendi.length===1?'o':'i'} registrat{stipendi.length===1?'o':'i'}</p>
@@ -397,7 +854,7 @@ function HomeTab({ data, setTab }) {
     {
       id:'note', emoji:<Fa icon='fa-regular fa-note-sticky' />, title:'Note',
       value:`${data.note.length}`, subtitle:'appunti',
-      color:'#F97316', bg:'#FFF7ED',
+      color:'#F97316', bg:'#F9731615',
     },
     (() => {
       const acc = data.accantonamenti || []
@@ -408,7 +865,7 @@ function HomeTab({ data, setTab }) {
         id:'accantonamenti', emoji:<Fa icon='fa-solid fa-piggy-bank' />, title:'Accantonamenti',
         value: acc.length>0 ? `€ ${totAcc.toFixed(0)}` : '—',
         subtitle: acc.length>0 ? `${acc.length} fondi attivi` : 'Nessun fondo',
-        color:'#0EA5E9', bg:'#F0F9FF',
+        color:'#0EA5E9', bg:'#0EA5E915',
         extra: acc.length>0 && totObj>0 ? (
           <div style={{marginTop:10}}>
             <ProgBar pct={Math.min(100, percAcc)} color={percAcc>=100?'#10B981':'#0EA5E9'} />
@@ -417,7 +874,26 @@ function HomeTab({ data, setTab }) {
         ) : null,
       }
     })(),
-  ]
+    (() => {
+      const conti = data.conti || []
+      const totSaldo = conti.reduce((s,c) => s + (c.saldo||0), 0)
+      return conti.length > 1 ? {
+        id:'conti', emoji:<Fa icon='fa-solid fa-building-columns' />, title:'Conti',
+        value:`€ ${totSaldo.toFixed(0)}`, subtitle:`${conti.length} conti attivi`,
+        color:'#6366F1', bg:'#6366F115',
+        extra: (
+          <div style={{display:'flex',flexDirection:'column',gap:3,marginTop:8}}>
+            {conti.map(c=>(
+              <div key={c.id} style={{display:'flex',justifyContent:'space-between',fontSize:11}}>
+                <span style={{color:t.textMut}}>{c.nome}</span>
+                <span style={{fontWeight:600,color:c.saldo>=0?t.text:'#EF4444'}}>€ {(c.saldo||0).toFixed(0)}</span>
+              </div>
+            ))}
+          </div>
+        ),
+      } : null
+    })(),
+  ].filter(Boolean)
 
   // Smart alerts data
   const giorniPassati = new Date().getDate()
@@ -429,11 +905,29 @@ function HomeTab({ data, setTab }) {
   const debiti = calcolaDebiti(data.spese.filter(s=>s.data?.startsWith(mc())), data.membrifamiglia)
   const debitiAttivi = debiti.filter(d=>Math.abs(d.saldo)>1)
   const smartAlerts = []
-  if (velocitaGiorno > 0 && previsioneFM > data.budget * 1.1) smartAlerts.push({icon:<Fa icon='fa-solid fa-fire' />,msg:`Stai spendendo € ${velocitaGiorno.toFixed(0)}/giorno — previsti € ${previsioneFM.toFixed(0)} a fine mese`,color:'#EF4444',bg:'#FEF2F2'})
-  if (giorniRimasti > 0 && tmese < data.budget) smartAlerts.push({icon:<Fa icon='fa-solid fa-lightbulb' />,msg:`Budget giornaliero disponibile: € ${budgetGiornaliero.toFixed(1)}`,color:'#3B82F6',bg:'#EFF6FF'})
-  if (debitiAttivi.length > 0) { const creditori = debitiAttivi.filter(d=>d.saldo>0); const debitori = debitiAttivi.filter(d=>d.saldo<0); if(creditori.length) smartAlerts.push({icon:<Fa icon='fa-solid fa-arrows-rotate' />,msg:`${creditori.map(d=>`${d.nome} ha anticipato € ${d.saldo.toFixed(0)}`).join(', ')}`,color:'#8B5CF6',bg:'#F5F3FF'}) }
+  if (velocitaGiorno > 0 && previsioneFM > data.budget * 1.1) smartAlerts.push({icon:<Fa icon='fa-solid fa-fire' />,msg:`Stai spendendo € ${velocitaGiorno.toFixed(0)}/giorno — previsti € ${previsioneFM.toFixed(0)} a fine mese`,color:'#EF4444',bg:'#EF444415'})
+  if (giorniRimasti > 0 && tmese < data.budget) smartAlerts.push({icon:<Fa icon='fa-solid fa-lightbulb' />,msg:`Budget giornaliero disponibile: € ${budgetGiornaliero.toFixed(1)}`,color:'#3B82F6',bg:'#3B82F615'})
+  if (debitiAttivi.length > 0) { const creditori = debitiAttivi.filter(d=>d.saldo>0); const debitori = debitiAttivi.filter(d=>d.saldo<0); if(creditori.length) smartAlerts.push({icon:<Fa icon='fa-solid fa-arrows-rotate' />,msg:`${creditori.map(d=>`${d.nome} ha anticipato € ${d.saldo.toFixed(0)}`).join(', ')}`,color:'#8B5CF6',bg:'#8B5CF615'}) }
   const scadOggi = data.scadenze.filter(s=>!s.gestita&&s.data===new Date().toISOString().slice(0,10))
-  if (scadOggi.length) smartAlerts.push({icon:<Fa icon='fa-solid fa-bell' />,msg:`Scadenza oggi: ${scadOggi.map(s=>s.nome).join(', ')}`,color:'#F59E0B',bg:'#FFFBEB'})
+  if (scadOggi.length) smartAlerts.push({icon:<Fa icon='fa-solid fa-bell' />,msg:`Scadenza oggi: ${scadOggi.map(s=>s.nome).join(', ')}`,color:'#F59E0B',bg:'#F59E0B15'})
+  // Scadenze domani
+  const domani = new Date(); domani.setDate(domani.getDate()+1); const domaniISO = domani.toISOString().slice(0,10)
+  const scadDomani = data.scadenze.filter(s=>!s.gestita&&s.data===domaniISO)
+  if (scadDomani.length) smartAlerts.push({icon:<Fa icon='fa-regular fa-clock' />,msg:`Domani: ${scadDomani.map(s=>s.nome+(s.importoStimato?` (€${s.importoStimato})`:'')). join(', ')}`,color:'#6366F1',bg:'#6366F115'})
+  // Budget categorie quasi esauriti
+  Object.entries(data.budgetCategorie||{}).forEach(([cat,limite]) => {
+    const spesoCat = data.spese.filter(s=>s.data?.startsWith(mc())&&s.categoria===cat).reduce((s,x)=>s+ +x.importo,0)
+    if (spesoCat >= limite * 0.9 && spesoCat < limite) smartAlerts.push({icon:<Fa icon='fa-solid fa-chart-pie' />,msg:`Budget ${cat} al ${(spesoCat/limite*100).toFixed(0)}% — restano € ${(limite-spesoCat).toFixed(0)}`,color:'#F97316',bg:'#F9731615'})
+    if (spesoCat >= limite) smartAlerts.push({icon:<Fa icon='fa-solid fa-triangle-exclamation' />,msg:`Budget ${cat} superato! € ${spesoCat.toFixed(0)} / € ${limite}`,color:'#EF4444',bg:'#EF444415'})
+  })
+  // Garanzie in scadenza
+  data.inventario.filter(x=>x.scadenzaGaranzia).forEach(x=>{
+    const gg=Math.ceil((new Date(x.scadenzaGaranzia)-new Date())/864e5)
+    if(gg>=0&&gg<=30) smartAlerts.push({icon:<Fa icon='fa-solid fa-shield-halved' />,msg:`Garanzia ${x.nome} scade tra ${gg} giorn${gg===1?'o':'i'}`,color:'#0EA5E9',bg:'#0EA5E915'})
+  })
+  // Ricorrenti mancanti
+  const ricMancanti = ricorrentiMancanti(data.spese, mc())
+  if (ricMancanti.length>0) smartAlerts.push({icon:<Fa icon='fa-solid fa-rotate' />,msg:`${ricMancanti.length} spes${ricMancanti.length===1?'a ricorrente non ancora inserita':'e ricorrenti non ancora inserite'}`,color:'#8B5CF6',bg:'#8B5CF615'})
 
   const barData = ultimi6().map(m => ({ name:MESI[+m.slice(5,7)-1], Spese:+totMese(data.spese,m).toFixed(0) }))
 
@@ -451,11 +945,12 @@ function HomeTab({ data, setTab }) {
       <AnimatePresence>
         {perc>80 && (
           <motion.div initial={{opacity:0,height:0,marginBottom:0}} animate={{opacity:1,height:'auto',marginBottom:16}} exit={{opacity:0,height:0,marginBottom:0}}
-            style={{background:perc>100?'#FEF2F2':'#FFFBEB',border:`1px solid ${perc>100?'#FECACA':'#FDE68A'}`,borderRadius:12,padding:'11px 16px',color:perc>100?'#DC2626':'#D97706',fontSize:14,fontWeight:500}}>
+            style={{background:perc>100?'#EF444415':'#F59E0B15',border:`1px solid ${t.border}`,borderRadius:12,padding:'11px 16px',color:perc>100?'#DC2626':'#D97706',fontSize:14,fontWeight:500}}>
             {perc>100?`Budget superato di € ${(tmese-data.budget).toFixed(2)}!`:`Hai usato il ${perc.toFixed(0)}% del budget mensile`}
           </motion.div>
         )}
       </AnimatePresence>
+
 
       {/* Smart Alerts */}
       {smartAlerts.length>0 && (
@@ -497,7 +992,7 @@ function HomeTab({ data, setTab }) {
                 <p style={{margin:0,fontSize:mob?20:25,fontWeight:700,color:card.color}}>{card.value}</p>
                 <p style={{margin:'4px 0 0',fontSize:12,color:t.textMut}}>{card.subtitle}</p>
               </div>
-              <div style={{width:mob?38:46,height:mob?38:46,borderRadius:12,background:card.bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:mob?18:21,flexShrink:0}}>{card.emoji}</div>
+              <div style={{width:mob?38:46,height:mob?38:46,borderRadius:12,background:card.bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:mob?18:21,flexShrink:0,color:card.color}}>{card.emoji}</div>
             </div>
             {card.extra}
           </motion.div>
@@ -509,16 +1004,16 @@ function HomeTab({ data, setTab }) {
         <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} style={{...S.card,marginBottom:20}}>
           <h3 style={{margin:'0 0 14px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-brain' style={{marginRight:6}} />Budget Intelligence</h3>
           <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(3,1fr)',gap:mob?10:16}}>
-            <div style={{padding:14,background:velocitaGiorno*giorniNelMese>data.budget?'#FEF2F2':'#ECFDF5',borderRadius:12,textAlign:'center'}}>
-              <p style={{margin:'0 0 4px',fontSize:11,color:'#64748B'}}>Velocità spesa</p>
+            <div style={{padding:14,background:velocitaGiorno*giorniNelMese>data.budget?'#EF444415':'#10B98115',borderRadius:12,textAlign:'center'}}>
+              <p style={{margin:'0 0 4px',fontSize:11,color:t.textMut}}>Velocità spesa</p>
               <p style={{margin:0,fontSize:22,fontWeight:700,color:velocitaGiorno*giorniNelMese>data.budget?'#EF4444':'#10B981'}}>€ {velocitaGiorno.toFixed(1)}<span style={{fontSize:12,fontWeight:400}}>/giorno</span></p>
             </div>
-            <div style={{padding:14,background:'#EFF6FF',borderRadius:12,textAlign:'center'}}>
-              <p style={{margin:'0 0 4px',fontSize:11,color:'#64748B'}}>Proiezione fine mese</p>
+            <div style={{padding:14,background:'#3B82F615',borderRadius:12,textAlign:'center'}}>
+              <p style={{margin:'0 0 4px',fontSize:11,color:t.textMut}}>Proiezione fine mese</p>
               <p style={{margin:0,fontSize:22,fontWeight:700,color:previsioneFM>data.budget?'#EF4444':'#3B82F6'}}>€ {previsioneFM.toFixed(0)}</p>
             </div>
-            <div style={{padding:14,background:budgetGiornaliero<10?'#FFFBEB':'#ECFDF5',borderRadius:12,textAlign:'center'}}>
-              <p style={{margin:'0 0 4px',fontSize:11,color:'#64748B'}}>Puoi spendere ancora</p>
+            <div style={{padding:14,background:budgetGiornaliero<10?'#F59E0B15':'#10B98115',borderRadius:12,textAlign:'center'}}>
+              <p style={{margin:'0 0 4px',fontSize:11,color:t.textMut}}>Puoi spendere ancora</p>
               <p style={{margin:0,fontSize:22,fontWeight:700,color:budgetGiornaliero<10?'#F59E0B':'#10B981'}}>€ {budgetGiornaliero.toFixed(1)}<span style={{fontSize:12,fontWeight:400}}>/giorno</span></p>
             </div>
           </div>
@@ -616,7 +1111,7 @@ function HomeTab({ data, setTab }) {
           }
         </div>
 
-        {/* Debiti tra membri */}
+        {/* Debiti tra membri — enhanced */}
         {debitiAttivi.length > 0 && (
           <div style={S.card}>
             <h3 style={{margin:'0 0 12px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-arrows-rotate' style={{marginRight:6}} />Saldi tra membri</h3>
@@ -624,7 +1119,7 @@ function HomeTab({ data, setTab }) {
               {debiti.map(d=>(
                 <div key={d.nome} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 10px',background:t.rowBg,borderRadius:9}}>
                   <div style={{display:'flex',alignItems:'center',gap:8}}>
-                    <div style={{width:28,height:28,borderRadius:'50%',background:d.saldo>0?'#ECFDF5':'#FEF2F2',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:d.saldo>0?'#059669':'#DC2626'}}>
+                    <div style={{width:28,height:28,borderRadius:'50%',background:d.saldo>0?'#10B98115':'#EF444415',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:d.saldo>0?'#059669':'#DC2626'}}>
                       {d.nome[0].toUpperCase()}
                     </div>
                     <span style={{fontSize:13,color:t.text,fontWeight:500}}>{d.nome}</span>
@@ -635,7 +1130,133 @@ function HomeTab({ data, setTab }) {
                 </div>
               ))}
             </div>
+            {/* Trasferimenti suggeriti */}
+            {(() => {
+              const trasf = calcolaTrasferimenti(data.spese.filter(s=>s.data?.startsWith(mc())), data.membrifamiglia)
+              return trasf.length > 0 ? (
+                <div style={{marginTop:12,padding:10,background:'#6366F110',borderRadius:10}}>
+                  <p style={{margin:'0 0 6px',fontSize:12,fontWeight:600,color:'#6366F1'}}><Fa icon='fa-solid fa-route' style={{marginRight:4}} />Per pareggiare i conti:</p>
+                  {trasf.map((tr,i) => (
+                    <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
+                      <span style={{fontSize:12,color:t.text}}>{tr.da} → {tr.a}: <b>€ {tr.importo.toFixed(2)}</b></span>
+                      <motion.button whileTap={{scale:0.9}} onClick={() => {
+                        updateData('rimborsi', [...(data.rimborsi||[]), { id:Date.now(), da:tr.da, a:tr.a, importo:tr.importo, data:new Date().toISOString().slice(0,10) }])
+                      }} style={{padding:'3px 10px',background:'#10B981',color:'white',border:'none',borderRadius:6,fontSize:11,fontWeight:600,cursor:'pointer'}}>
+                        <Fa icon='fa-solid fa-check' style={{marginRight:3}} />Salda
+                      </motion.button>
+                    </div>
+                  ))}
+                </div>
+              ) : null
+            })()}
+            {/* Storico rimborsi */}
+            {(data.rimborsi||[]).length > 0 && (
+              <div style={{marginTop:10}}>
+                <p style={{margin:'0 0 6px',fontSize:12,fontWeight:600,color:t.textSec}}>Storico rimborsi</p>
+                {[...(data.rimborsi||[])].reverse().slice(0,5).map(r => (
+                  <div key={r.id} style={{display:'flex',justifyContent:'space-between',fontSize:11,color:t.textMut,padding:'3px 0',borderBottom:`1px solid ${t.border}`}}>
+                    <span>{r.da} → {r.a}</span>
+                    <span>€ {r.importo.toFixed(2)} · {new Date(r.data).toLocaleDateString('it-IT')}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <p style={{margin:'8px 0 0',fontSize:11,color:t.textMut}}>Basato sulle spese condivise del mese corrente</p>
+          </div>
+        )}
+
+        {/* Previsione flusso di cassa */}
+        {entrate > 0 && (
+          <div style={S.card}>
+            <h3 style={{margin:'0 0 12px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-chart-line' style={{marginRight:6}} />Previsione flusso di cassa</h3>
+            {(() => {
+              const flusso = previsioneFlusso(data, 90)
+              const minSaldo = Math.min(...flusso.map(f=>f.saldo))
+              const critico = flusso.find(f=>f.saldo<0)
+              return (
+                <div>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <AreaChart data={flusso}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={t.border} />
+                      <XAxis dataKey="label" tick={{fontSize:10,fill:t.textMut}} interval={Math.max(0,Math.floor(flusso.length/5)-1)} />
+                      <YAxis tick={{fontSize:10,fill:t.textMut}} tickFormatter={v=>`€${v}`} width={55} />
+                      <Tooltip formatter={v=>`€ ${v}`} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8,fontSize:12}} />
+                      <Area type="monotone" dataKey="saldo" stroke="#3B82F6" fill="#3B82F620" strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                  <div style={{display:'flex',gap:12,marginTop:8,flexWrap:'wrap'}}>
+                    <div style={{fontSize:12,color:t.textMut}}>
+                      <Fa icon='fa-solid fa-calendar-day' style={{marginRight:4,color:'#3B82F6'}} />
+                      Tra 30gg: <b style={{color:t.text}}>€ {(flusso.find(f=>f.giorno>=28)?.saldo||0).toFixed(0)}</b>
+                    </div>
+                    {critico && <div style={{fontSize:12,color:'#EF4444',fontWeight:600}}>
+                      <Fa icon='fa-solid fa-triangle-exclamation' style={{marginRight:4}} />
+                      Saldo negativo il {new Date(critico.data).toLocaleDateString('it-IT')}
+                    </div>}
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+        )}
+
+        {/* Gamification — Badge */}
+        {(() => {
+          const earned = BADGE_DEFS.filter(b => b.check(data))
+          const newBadges = earned.filter(b => !(data.badges||[]).includes(b.id))
+          if (newBadges.length > 0 && updateData) {
+            setTimeout(() => updateData('badges', [...new Set([...(data.badges||[]), ...newBadges.map(b=>b.id)])]), 100)
+          }
+          return earned.length > 0 ? (
+            <div style={S.card}>
+              <h3 style={{margin:'0 0 12px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-trophy' style={{marginRight:6}} />Traguardi</h3>
+              <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                {earned.map(b => (
+                  <motion.div key={b.id} initial={{scale:0,opacity:0}} animate={{scale:1,opacity:1}} transition={{type:'spring',stiffness:400,damping:15}}
+                    style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',background:b.color+'15',borderRadius:20,border:`1px solid ${b.color}30`}}>
+                    <Fa icon={b.icon} style={{color:b.color,fontSize:14}} />
+                    <div>
+                      <div style={{fontSize:12,fontWeight:600,color:t.text}}>{b.nome}</div>
+                      <div style={{fontSize:10,color:t.textMut}}>{b.desc}</div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+              <div style={{marginTop:10,display:'flex',alignItems:'center',gap:8}}>
+                <ProgBar pct={earned.length/BADGE_DEFS.length*100} color='#F59E0B' />
+                <span style={{fontSize:11,color:t.textMut,whiteSpace:'nowrap'}}>{earned.length}/{BADGE_DEFS.length}</span>
+              </div>
+            </div>
+          ) : null
+        })()}
+
+        {/* Classifica familiare — chi ha speso meno */}
+        {data.membrifamiglia.length > 1 && data.spese.filter(s=>s.data?.startsWith(mc())&&s.pagatoDa).length > 0 && (
+          <div style={S.card}>
+            <h3 style={{margin:'0 0 12px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-ranking-star' style={{marginRight:6}} />Classifica del mese</h3>
+            {(() => {
+              const speseMese = data.spese.filter(s=>s.data?.startsWith(mc()))
+              const perMembro = data.membrifamiglia.map(m => ({
+                nome: m,
+                speso: speseMese.filter(s=>s.pagatoDa===m&&!s.condivisa).reduce((s,x)=>s+ +x.importo,0)
+              })).sort((a,b)=>a.speso-b.speso)
+              const maxSpeso = Math.max(...perMembro.map(m=>m.speso), 1)
+              const medaglie = ['🥇','🥈','🥉']
+              return (
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {perMembro.map((m,i) => (
+                    <div key={m.nome}>
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:3}}>
+                        <span style={{fontSize:13,color:t.text,fontWeight:500}}>{i<3?medaglie[i]+' ':''}{m.nome}</span>
+                        <span style={{fontSize:13,fontWeight:600,color:i===0?'#10B981':t.text}}>€ {m.speso.toFixed(0)}</span>
+                      </div>
+                      <ProgBar pct={maxSpeso>0?m.speso/maxSpeso*100:0} color={i===0?'#10B981':i===1?'#3B82F6':'#F59E0B'} />
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
+            <p style={{margin:'6px 0 0',fontSize:11,color:t.textMut}}>Spese personali (escluse condivise)</p>
           </div>
         )}
       </div>
@@ -647,7 +1268,7 @@ function HomeTab({ data, setTab }) {
 function SpeseTab({ data, updateData }) {
   const t = useT(); const S = makeS(t); const toast = useToast()
   const w = useWindowWidth(); const mob = w < 768
-  const [form, setForm]   = useState({ descrizione:'', importo:'', categoria:data.categorieSpese[0]||'Casa', data:new Date().toISOString().slice(0,10), ricorrente:false, pagatoDa:'', condivisa:false, contattoId:'' })
+  const [form, setForm]   = useState({ descrizione:'', importo:'', categoria:data.categorieSpese[0]||'Casa', data:new Date().toISOString().slice(0,10), ricorrente:false, pagatoDa:'', condivisa:false, contattoId:'', conto:'', stanza:'', splitQuote:{} })
   const [errors, setErrors] = useState({})
   const [filtroMese, setFiltroMese] = useState(mc())
   const [filtroCat, setFiltroCat]   = useState('Tutte')
@@ -656,6 +1277,9 @@ function SpeseTab({ data, updateData }) {
   const [ordine, setOrdine]         = useState('data-desc')
   const [showSplit, setShowSplit]   = useState(false)
   const [editId, setEditId]         = useState(null)
+  const [ocrLoading, setOcrLoading] = useState(false)
+  const [showSplitQuote, setShowSplitQuote] = useState(false)
+  const ocrInputRef = useRef(null)
 
   const validate = () => {
     const e = {}
@@ -664,22 +1288,39 @@ function SpeseTab({ data, updateData }) {
     setErrors(e); return !Object.keys(e).length
   }
 
-  const formDefault = { descrizione:'', importo:'', categoria:data.categorieSpese[0]||'Casa', data:new Date().toISOString().slice(0,10), ricorrente:false, pagatoDa:'', condivisa:false, contattoId:'' }
+  const formDefault = { descrizione:'', importo:'', categoria:data.categorieSpese[0]||'Casa', data:new Date().toISOString().slice(0,10), ricorrente:false, pagatoDa:'', condivisa:false, contattoId:'', conto:'', stanza:'', splitQuote:{} }
+
+  const handleOCR = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setOcrLoading(true)
+    try {
+      const Tess = await loadTesseract()
+      const { data: { text } } = await Tess.recognize(file, 'ita+eng')
+      const parsed = parseOCR(text)
+      setForm(f => ({ ...f, ...(parsed.importo ? { importo: parsed.importo } : {}), ...(parsed.data ? { data: parsed.data } : {}) }))
+      toast(parsed.importo ? `Rilevato: € ${parsed.importo}` : 'Nessun importo rilevato, controlla manualmente', parsed.importo ? 'success' : 'info')
+    } catch {
+      toast('Errore durante la scansione', 'error')
+    }
+    setOcrLoading(false)
+    if (ocrInputRef.current) ocrInputRef.current.value = ''
+  }
 
   const aggiungi = () => {
     if (!validate()) return
     if (editId) {
-      updateData('spese', data.spese.map(s=>s.id===editId?{...s, descrizione:form.descrizione.trim(), importo:+form.importo, categoria:form.categoria, data:form.data, ricorrente:form.ricorrente, pagatoDa:form.pagatoDa, condivisa:form.condivisa, contattoId:form.contattoId||undefined}:s))
+      updateData('spese', data.spese.map(s=>s.id===editId?{...s, descrizione:form.descrizione.trim(), importo:+form.importo, categoria:form.categoria, data:form.data, ricorrente:form.ricorrente, pagatoDa:form.pagatoDa, condivisa:form.condivisa, contattoId:form.contattoId||undefined, conto:form.conto||undefined, stanza:form.stanza||undefined, splitQuote:form.condivisa&&Object.keys(form.splitQuote||{}).length?form.splitQuote:undefined}:s))
       toast('Spesa aggiornata')
     } else {
-      updateData('spese', [...data.spese, { ...form, importo:+form.importo, id:Date.now(), contattoId:form.contattoId||undefined }])
+      updateData('spese', [...data.spese, { ...form, importo:+form.importo, id:Date.now(), contattoId:form.contattoId||undefined, conto:form.conto||undefined, stanza:form.stanza||undefined, splitQuote:form.condivisa&&Object.keys(form.splitQuote||{}).length?form.splitQuote:undefined }])
       toast('Spesa aggiunta')
     }
     setForm(formDefault); setEditId(null); setErrors({})
   }
 
   const startEdit = (s) => {
-    setForm({ descrizione:s.descrizione, importo:String(s.importo), categoria:s.categoria, data:s.data, ricorrente:!!s.ricorrente, pagatoDa:s.pagatoDa||'', condivisa:!!s.condivisa, contattoId:s.contattoId||'' })
+    setForm({ descrizione:s.descrizione, importo:String(s.importo), categoria:s.categoria, data:s.data, ricorrente:!!s.ricorrente, pagatoDa:s.pagatoDa||'', condivisa:!!s.condivisa, contattoId:s.contattoId||'', conto:s.conto||'', stanza:s.stanza||'', splitQuote:s.splitQuote||{} })
     setEditId(s.id)
   }
   const cancelEdit = () => { setForm(formDefault); setEditId(null); setErrors({}) }
@@ -716,23 +1357,21 @@ function SpeseTab({ data, updateData }) {
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
             <h2 style={{margin:0,fontSize:18,fontWeight:700,color:t.text}}><Fa icon='fa-solid fa-wallet' style={{marginRight:6}} />Spese & Budget</h2>
             <div style={{display:'flex',gap:8,alignItems:'center'}}>
-              <input type="month" value={filtroMese} onChange={e=>{setFiltroMese(e.target.value);setFiltroAnno('')}} style={S.input} />
+              <MonthPick value={filtroMese} onChange={e=>{setFiltroMese(e.target.value);setFiltroAnno('')}} style={S.input} />
               {anni.length>0 && (
-                <select value={filtroAnno} onChange={e=>{setFiltroAnno(e.target.value)}} style={{...S.input,fontSize:12}}>
-                  <option value="">Mese</option>
-                  {anni.map(a=><option key={a} value={a}>Anno {a}</option>)}
-                </select>
+                <Sel value={filtroAnno} onChange={e=>{setFiltroAnno(e.target.value)}} style={{...S.input,fontSize:12}}
+                  options={[{value:'',label:'Mese'},...anni.map(a=>({value:a,label:'Anno '+a}))]} />
               )}
             </div>
           </div>
           <div style={{display:'flex',gap:mob?8:12,marginBottom:14,flexWrap:'wrap'}}>
-            <div style={{flex:1,minWidth:mob?'45%':undefined,background:'#EFF6FF',borderRadius:12,padding:mob?10:14,textAlign:'center'}}>
+            <div style={{flex:1,minWidth:mob?'45%':undefined,background:'#3B82F615',borderRadius:12,padding:mob?10:14,textAlign:'center'}}>
               <p style={{margin:'0 0 2px',fontSize:12,color:t.textSec}}>Totale{filtroAnno?' anno':' speso'}</p>
               <motion.p key={totFiltr} initial={{opacity:0,scale:0.88}} animate={{opacity:1,scale:1}} transition={{type:'spring',stiffness:300}}
                 style={{margin:0,fontSize:mob?20:26,fontWeight:700,color:'#3B82F6'}}>€ {(filtroAnno?totAnno(data.spese,+filtroAnno):totAll).toFixed(2)}</motion.p>
             </div>
             {!filtroAnno && (
-              <div style={{flex:1,minWidth:mob?'45%':undefined,background:totAll>data.budget?'#FEF2F2':'#ECFDF5',borderRadius:12,padding:mob?10:14,textAlign:'center'}}>
+              <div style={{flex:1,minWidth:mob?'45%':undefined,background:totAll>data.budget?'#EF444415':'#10B98115',borderRadius:12,padding:mob?10:14,textAlign:'center'}}>
                 <p style={{margin:'0 0 2px',fontSize:12,color:t.textSec}}>Rimanente</p>
                 <motion.p key={data.budget-totAll} initial={{opacity:0,scale:0.88}} animate={{opacity:1,scale:1}} transition={{type:'spring',stiffness:300}}
                   style={{margin:0,fontSize:mob?20:26,fontWeight:700,color:totAll>data.budget?'#EF4444':'#10B981'}}>€ {(data.budget-totAll).toFixed(2)}</motion.p>
@@ -747,13 +1386,9 @@ function SpeseTab({ data, updateData }) {
 
         <div style={S.card}>
           <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap',alignItems:'center'}}>
-            <input value={cerca} onChange={e=>setCerca(e.target.value)} placeholder="Cerca..." style={{...S.input,flex:1,minWidth:mob?80:130}} />
-            <select value={ordine} onChange={e=>setOrdine(e.target.value)} style={{...S.input,fontSize:12}}>
-              <option value="data-desc">↓ Data</option>
-              <option value="data-asc">↑ Data</option>
-              <option value="importo-desc">↓ Importo</option>
-              <option value="importo-asc">↑ Importo</option>
-            </select>
+            <Inp value={cerca} onChange={e=>setCerca(e.target.value)} placeholder="Cerca..." style={{flex:1,minWidth:mob?80:130}} />
+            <Sel value={ordine} onChange={e=>setOrdine(e.target.value)} style={{...S.input,fontSize:12}}
+              options={[{value:'data-desc',label:'↓ Data'},{value:'data-asc',label:'↑ Data'},{value:'importo-desc',label:'↓ Importo'},{value:'importo-asc',label:'↑ Importo'}]} />
           </div>
           <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:12}}>
             {['Tutte',...data.categorieSpese].map(cat=>(
@@ -775,13 +1410,13 @@ function SpeseTab({ data, updateData }) {
                       <div style={{width:9,height:9,borderRadius:'50%',background:catCol(s.categoria),flexShrink:0}} />
                       <span style={{flex:1,fontSize:mob?13:14,color:t.text,minWidth:mob?'60%':undefined}}>
                         {s.descrizione}
-                        {s.ricorrente && <span style={{fontSize:10,background:'#DBEAFE',color:'#3B82F6',padding:'1px 5px',borderRadius:6,marginLeft:6}}><Fa icon='fa-solid fa-rotate' /></span>}
-                        {s.condivisa && <span style={{fontSize:10,background:'#D1FAE5',color:'#10B981',padding:'1px 5px',borderRadius:6,marginLeft:4}}>split</span>}
+                        {s.ricorrente && <span style={{fontSize:10,background:'#3B82F618',color:'#3B82F6',padding:'1px 5px',borderRadius:6,marginLeft:6}}><Fa icon='fa-solid fa-rotate' /></span>}
+                        {s.condivisa && <span style={{fontSize:10,background:'#10B98118',color:'#10B981',padding:'1px 5px',borderRadius:6,marginLeft:4}}>split</span>}
                       </span>
                       {!mob && <span style={{fontSize:11,color:t.textMut}}>{s.data}</span>}
                       {!mob && <span style={{fontSize:11,background:t.tagBg,color:t.tagText,padding:'2px 7px',borderRadius:8}}>{s.categoria}</span>}
                       {!mob && s.pagatoDa && <span style={{fontSize:11,color:'#3B82F6'}}><Fa icon='fa-solid fa-user' style={{marginRight:3}} />{s.pagatoDa}</span>}
-                      {!mob && s.contattoId && (()=>{const ct=data.contatti.find(c=>c.id===+s.contattoId||c.id===s.contattoId); return ct ? <span style={{fontSize:10,background:'#E0F2FE',color:'#0369A1',padding:'1px 5px',borderRadius:6}}><Fa icon='fa-solid fa-address-card' style={{marginRight:3}} />{ct.nome}</span> : null})()}
+                      {!mob && s.contattoId && (()=>{const ct=data.contatti.find(c=>c.id===+s.contattoId||c.id===s.contattoId); return ct ? <span style={{fontSize:10,background:'#0369A118',color:'#0369A1',padding:'1px 5px',borderRadius:6}}><Fa icon='fa-solid fa-address-card' style={{marginRight:3}} />{ct.nome}</span> : null})()}
                       <span style={{fontSize:mob?13:14,fontWeight:700,color:t.text,minWidth:mob?50:68,textAlign:'right'}}>€ {(+s.importo).toFixed(2)}</span>
                       <motion.button whileTap={{scale:0.85}} onClick={()=>startEdit(s)}
                         style={{background:'none',border:'none',cursor:'pointer',fontSize:14,padding:'0 2px'}}><Fa icon='fa-solid fa-pen' /></motion.button>
@@ -820,43 +1455,79 @@ function SpeseTab({ data, updateData }) {
 
       <div style={{display:'flex',flexDirection:'column',gap:16}}>
         <div style={S.card}>
-          <h3 style={{margin:'0 0 16px',fontSize:16,fontWeight:600,color:t.text}}>{editId ? 'Modifica spesa' : '+ Nuova spesa'}</h3>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+            <h3 style={{margin:0,fontSize:16,fontWeight:600,color:t.text}}>{editId ? 'Modifica spesa' : '+ Nuova spesa'}</h3>
+            <div style={{display:'flex',gap:6}}>
+              <motion.button whileTap={{scale:0.9}} onClick={()=>ocrInputRef.current?.click()} disabled={ocrLoading}
+                style={{padding:'6px 12px',background:'#8B5CF615',border:'none',borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:600,color:'#8B5CF6',display:'flex',alignItems:'center',gap:4}}>
+                {ocrLoading ? <><Fa icon='fa-solid fa-spinner fa-spin' /> Scansione...</> : <><Fa icon='fa-solid fa-camera' /> Scontrino</>}
+              </motion.button>
+              <input ref={ocrInputRef} type="file" accept="image/*" capture="environment" onChange={handleOCR} style={{display:'none'}} />
+            </div>
+          </div>
           <FormField label="Descrizione" error={errors.descrizione}>
-            <input value={form.descrizione} onChange={e=>setForm({...form,descrizione:e.target.value})} placeholder="es. Supermercato" style={S.inputFull} onKeyDown={e=>e.key==='Enter'&&aggiungi()} />
+            <Inp value={form.descrizione} onChange={e=>setForm({...form,descrizione:e.target.value})} placeholder="es. Supermercato" onKeyDown={e=>e.key==='Enter'&&aggiungi()} />
           </FormField>
           <FormField label="Importo (€)" error={errors.importo}>
-            <input type="number" value={form.importo} onChange={e=>setForm({...form,importo:e.target.value})} placeholder="0.00" style={S.inputFull} />
+            <Inp type="number" value={form.importo} onChange={e=>setForm({...form,importo:e.target.value})} placeholder="0.00" />
           </FormField>
           <FormField label="Categoria">
-            <select value={form.categoria} onChange={e=>setForm({...form,categoria:e.target.value})} style={S.inputFull}>
-              {data.categorieSpese.map(c=><option key={c}>{c}</option>)}
-            </select>
+            <Sel value={form.categoria} onChange={e=>setForm({...form,categoria:e.target.value})} style={S.inputFull}
+              options={data.categorieSpese.map(c=>({value:c,label:c}))} />
           </FormField>
           <FormField label="Data">
-            <input type="date" value={form.data} onChange={e=>setForm({...form,data:e.target.value})} style={S.inputFull} />
+            <DatePick value={form.data} onChange={e=>setForm({...form,data:e.target.value})} style={S.inputFull} />
           </FormField>
           <FormField label="Pagato da">
-            <select value={form.pagatoDa} onChange={e=>setForm({...form,pagatoDa:e.target.value})} style={S.inputFull}>
-              <option value="">— comune —</option>
-              {data.membrifamiglia.map(m=><option key={m}>{m}</option>)}
-            </select>
+            <Sel value={form.pagatoDa} onChange={e=>setForm({...form,pagatoDa:e.target.value})} style={S.inputFull}
+              options={[{value:'',label:'— comune —'},...data.membrifamiglia.map(m=>({value:m,label:m}))]} />
           </FormField>
+          <FormField label="Stanza">
+            <Sel value={form.stanza} onChange={e=>setForm({...form,stanza:e.target.value})} style={S.inputFull}
+              options={[{value:'',label:'— nessuna —'},...STANZE.map(s=>({value:s,label:s}))]} />
+          </FormField>
+          {(data.conti||[]).length>1 && (
+            <FormField label="Conto">
+              <Sel value={form.conto} onChange={e=>setForm({...form,conto:e.target.value})} style={S.inputFull}
+                options={[{value:'',label:'— tutti —'},...(data.conti||[]).map(c=>({value:c.nome,label:c.nome}))]} />
+            </FormField>
+          )}
           {data.contatti.length>0 && (
             <FormField label="Contatto collegato">
-              <select value={form.contattoId} onChange={e=>setForm({...form,contattoId:e.target.value})} style={S.inputFull}>
-                <option value="">— nessuno —</option>
-                {data.contatti.map(c=><option key={c.id} value={c.id}>{c.nome} ({c.ruolo})</option>)}
-              </select>
+              <Sel value={form.contattoId} onChange={e=>setForm({...form,contattoId:e.target.value})} style={S.inputFull}
+                options={[{value:'',label:'— nessuno —'},...data.contatti.map(c=>({value:String(c.id),label:c.nome+' ('+c.ruolo+')'}))]} />
             </FormField>
           )}
           <div style={{display:'flex',gap:16,marginBottom:12}}>
-            <label style={{display:'flex',alignItems:'center',gap:6,fontSize:13,color:t.textSec,cursor:'pointer'}}>
-              <input type="checkbox" checked={form.ricorrente} onChange={e=>setForm({...form,ricorrente:e.target.checked})} /> Ricorrente
-            </label>
-            <label style={{display:'flex',alignItems:'center',gap:6,fontSize:13,color:t.textSec,cursor:'pointer'}}>
-              <input type="checkbox" checked={form.condivisa} onChange={e=>setForm({...form,condivisa:e.target.checked})} /> Condivisa
-            </label>
+            <Chk checked={form.ricorrente} onChange={e=>setForm({...form,ricorrente:e.target.checked})} label="Ricorrente" />
+            <Chk checked={form.condivisa} onChange={e=>setForm({...form,condivisa:e.target.checked})} label="Condivisa" />
           </div>
+          {form.condivisa && data.membrifamiglia.length>1 && (
+            <div style={{marginBottom:12,padding:12,background:t.rowBg,borderRadius:10}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                <span style={{fontSize:12,fontWeight:600,color:t.textSec}}>Quote personalizzate</span>
+                <button onClick={()=>{
+                  if (Object.keys(form.splitQuote||{}).length) { setForm({...form,splitQuote:{}}) }
+                  else { const eq=Math.round(100/data.membrifamiglia.length*100)/100; setForm({...form,splitQuote:Object.fromEntries(data.membrifamiglia.map(m=>[m,eq]))}) }
+                }} style={{background:'none',border:'none',cursor:'pointer',fontSize:11,color:'#3B82F6',fontWeight:600}}>
+                  {Object.keys(form.splitQuote||{}).length?'Dividi equamente':'Personalizza %'}
+                </button>
+              </div>
+              {Object.keys(form.splitQuote||{}).length>0 ? (
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {data.membrifamiglia.map(m=>(
+                    <div key={m} style={{display:'flex',alignItems:'center',gap:8}}>
+                      <span style={{fontSize:13,color:t.text,flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m}</span>
+                      <Inp type="number" value={form.splitQuote[m]||''} onChange={e=>setForm({...form,splitQuote:{...form.splitQuote,[m]:+e.target.value||0}})}
+                        style={{width:70,textAlign:'center'}} placeholder="%" />
+                      <span style={{fontSize:12,color:t.textMut}}>%</span>
+                    </div>
+                  ))}
+                  {(()=>{const tot=Object.values(form.splitQuote).reduce((s,v)=>s+(+v||0),0); return Math.abs(tot-100)>0.5 ? <p style={{margin:'4px 0 0',fontSize:11,color:'#EF4444',fontWeight:600}}>Totale: {tot.toFixed(0)}% (deve essere 100%)</p> : null})()}
+                </div>
+              ) : <p style={{margin:0,fontSize:12,color:t.textMut}}>Diviso equamente ({Math.round(100/data.membrifamiglia.length)}% ciascuno)</p>}
+            </div>
+          )}
           <div style={{display:'flex',gap:8}}>
             <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#3B82F6'),flex:1}}>{editId ? 'Aggiorna' : 'Aggiungi spesa'}</motion.button>
             {editId && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px'}}>Annulla</motion.button>}
@@ -890,8 +1561,88 @@ function SpeseTab({ data, updateData }) {
           )}
         </AnimatePresence>
 
+        {Object.keys(data.budgetCategorie||{}).length>0 && (
+          <div style={S.card}>
+            <h3 style={{margin:'0 0 10px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-sliders' style={{marginRight:6}} />Budget per categoria</h3>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {data.categorieSpese.filter(cat=>(data.budgetCategorie||{})[cat]).map(cat=>{
+                const budgetCat = (data.budgetCategorie||{})[cat]
+                const spesoCat = data.spese.filter(s=>s.data?.startsWith(filtroAnno||filtroMese)&&s.categoria===cat).reduce((s,x)=>s+ +x.importo,0)
+                const percCat = (spesoCat/budgetCat)*100
+                return (
+                  <div key={cat}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:3}}>
+                      <div style={{display:'flex',alignItems:'center',gap:6}}>
+                        <div style={{width:8,height:8,borderRadius:'50%',background:catCol(cat)}} />
+                        <span style={{fontSize:12,color:t.text,fontWeight:500}}>{cat}</span>
+                      </div>
+                      <span style={{fontSize:12,fontWeight:600,color:percCat>100?'#EF4444':percCat>80?'#F59E0B':t.textSec}}>{'\u20AC'} {spesoCat.toFixed(0)} / {budgetCat}</span>
+                    </div>
+                    <ProgBar pct={Math.min(percCat,100)} color={percCat>100?'#EF4444':percCat>80?'#F59E0B':catCol(cat)} />
+                    {percCat>100 && <p style={{margin:'2px 0 0',fontSize:10,color:'#EF4444',fontWeight:600}}><Fa icon='fa-solid fa-triangle-exclamation' style={{marginRight:3}} />Superato di {'\u20AC'} {(spesoCat-budgetCat).toFixed(0)}</p>}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {(() => {
+          const cps = costiPerStanza(data.spese, filtroAnno||filtroMese)
+          const totCps = cps.reduce((s,c) => s + c.totale, 0)
+          return cps.length > 0 ? (
+            <div style={S.card}>
+              <h3 style={{margin:'0 0 10px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-house-chimney' style={{marginRight:6}} />Costi per stanza</h3>
+              <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                {cps.map(c => (
+                  <div key={c.stanza}>
+                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
+                      <span style={{fontSize:12,color:t.text,fontWeight:500}}>{c.stanza}</span>
+                      <span style={{fontSize:12,fontWeight:600,color:t.textSec}}>€ {c.totale.toFixed(0)} ({(c.totale/totCps*100).toFixed(0)}%)</span>
+                    </div>
+                    <ProgBar pct={totCps>0?c.totale/totCps*100:0} color={COLORI_CAT[c.stanza]||'#6366F1'} />
+                  </div>
+                ))}
+              </div>
+              <p style={{margin:'8px 0 0',fontSize:11,color:t.textMut}}>Totale con stanza: € {totCps.toFixed(0)}</p>
+            </div>
+          ) : null
+        })()}
+
+        {(() => {
+          const sugg = rilevaRicorrenti(data.spese)
+          const mancanti = ricorrentiMancanti(data.spese, filtroMese)
+          return (sugg.length > 0 || mancanti.length > 0) ? (
+            <div style={S.card}>
+              <h3 style={{margin:'0 0 10px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-rotate' style={{marginRight:6}} />Spese ricorrenti</h3>
+              {mancanti.length > 0 && (
+                <div style={{marginBottom:sugg.length>0?10:0}}>
+                  <p style={{margin:'0 0 6px',fontSize:12,fontWeight:600,color:'#F59E0B'}}><Fa icon='fa-solid fa-triangle-exclamation' style={{marginRight:4}} />Non ancora inserite questo mese:</p>
+                  {mancanti.map((m,i) => (
+                    <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 8px',background:'#F59E0B10',borderRadius:6,marginBottom:3}}>
+                      <span style={{fontSize:12,color:t.text}}>{m.descrizione}</span>
+                      <span style={{fontSize:12,fontWeight:600,color:'#F59E0B'}}>€ {(+m.importo).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {sugg.length > 0 && (
+                <div>
+                  <p style={{margin:'0 0 6px',fontSize:12,fontWeight:600,color:'#3B82F6'}}><Fa icon='fa-solid fa-lightbulb' style={{marginRight:4}} />Suggerimento: potrebbero essere ricorrenti</p>
+                  {sugg.map((s,i) => (
+                    <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'6px 8px',background:'#3B82F610',borderRadius:6,marginBottom:3}}>
+                      <span style={{fontSize:12,color:t.text,textTransform:'capitalize'}}>{s.descrizione}</span>
+                      <span style={{fontSize:12,color:t.textMut}}>~€ {s.importoMedio.toFixed(2)} × {s.mesi} mesi</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null
+        })()}
+
         <div style={S.card}>
-          <h3 style={{margin:'0 0 10px',fontSize:15,fontWeight:600,color:t.text}}>� Stipendio</h3>
+          <h3 style={{margin:'0 0 10px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-coins' style={{marginRight:6}} />Stipendio</h3>
           {(() => {
             const stipendio = getStipendioMese(data, filtroMese)
             const spMese = totMese(data.spese, filtroMese)
@@ -936,7 +1687,7 @@ function SpeseTab({ data, updateData }) {
         <div style={S.card}>
           <h3 style={{margin:'0 0 10px',fontSize:15,fontWeight:600,color:t.text}}>Budget mensile</h3>
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
-            <input type="number" defaultValue={data.budget} onBlur={e=>updateData('budget',+e.target.value||0)} style={{...S.inputFull,flex:1}} />
+            <Inp type="number" defaultValue={data.budget} onBlur={e=>updateData('budget',+e.target.value||0)} style={{flex:1}} />
             <span style={{color:t.textSec,fontSize:14,whiteSpace:'nowrap'}}>€/mese</span>
           </div>
         </div>
@@ -944,7 +1695,7 @@ function SpeseTab({ data, updateData }) {
         <div style={S.card}>
           <h3 style={{margin:'0 0 10px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-bullseye' style={{marginRight:6}} />Goal risparmio</h3>
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
-            <input type="number" defaultValue={data.goalRisparmio} onBlur={e=>updateData('goalRisparmio',+e.target.value||0)} style={{...S.inputFull,flex:1}} />
+            <Inp type="number" defaultValue={data.goalRisparmio} onBlur={e=>updateData('goalRisparmio',+e.target.value||0)} style={{flex:1}} />
             <span style={{color:t.textSec,fontSize:14,whiteSpace:'nowrap'}}>€/mese</span>
           </div>
         </div>
@@ -1053,8 +1804,8 @@ function ScadenzeTab({ data, updateData }) {
                               <p style={{margin:'2px 0 0',fontSize:12,color:t.textSec}}>{s.categoria} · {new Date(s.data).toLocaleDateString('it-IT')}</p>
                               {s.note && <p style={{margin:'2px 0 0',fontSize:11,color:t.textMut}}>{s.note}</p>}
                               <div style={{display:'flex',gap:6,marginTop:3,flexWrap:'wrap'}}>
-                                {s.ripetizione==='annuale' && <span style={{fontSize:10,background:'#EFF6FF',color:'#3B82F6',padding:'1px 6px',borderRadius:6,display:'inline-block'}}><Fa icon='fa-solid fa-rotate' style={{marginRight:3}} />annuale</span>}
-                                {s.importoStimato>0 && <span style={{fontSize:10,background:'#ECFDF5',color:'#059669',padding:'1px 6px',borderRadius:6,display:'inline-block'}}>€ {s.importoStimato}</span>}
+                                {s.ripetizione==='annuale' && <span style={{fontSize:10,background:'#3B82F618',color:'#3B82F6',padding:'1px 6px',borderRadius:6,display:'inline-block'}}><Fa icon='fa-solid fa-rotate' style={{marginRight:3}} />annuale</span>}
+                                {s.importoStimato>0 && <span style={{fontSize:10,background:'#05966918',color:'#059669',padding:'1px 6px',borderRadius:6,display:'inline-block'}}>€ {s.importoStimato}</span>}
                               </div>
                             </div>
                             <div style={{display:'flex',flexDirection:'column',gap:4,flexShrink:0}}>
@@ -1099,27 +1850,24 @@ function ScadenzeTab({ data, updateData }) {
       <div style={{...S.card,alignSelf:'start'}}>
         <h3 style={{margin:'0 0 16px',fontSize:16,fontWeight:600,color:t.text}}>{editId ? 'Modifica scadenza' : '+ Nuova scadenza'}</h3>
         <FormField label="Nome" error={errors.nome}>
-          <input value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} placeholder="es. Bollo auto" style={S.inputFull} onKeyDown={e=>e.key==='Enter'&&aggiungi()} />
+          <Inp value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} placeholder="es. Bollo auto" onKeyDown={e=>e.key==='Enter'&&aggiungi()} />
         </FormField>
         <FormField label="Data scadenza" error={errors.data}>
-          <input type="date" value={form.data} onChange={e=>setForm({...form,data:e.target.value})} style={S.inputFull} />
+          <DatePick value={form.data} onChange={e=>setForm({...form,data:e.target.value})} style={S.inputFull} />
         </FormField>
         <FormField label="Categoria">
-          <select value={form.categoria} onChange={e=>setForm({...form,categoria:e.target.value})} style={S.inputFull}>
-            {data.categorieScadenze.map(c=><option key={c}>{c}</option>)}
-          </select>
+          <Sel value={form.categoria} onChange={e=>setForm({...form,categoria:e.target.value})} style={S.inputFull}
+            options={data.categorieScadenze.map(c=>({value:c,label:c}))} />
         </FormField>
         <FormField label="Ripetizione">
-          <select value={form.ripetizione} onChange={e=>setForm({...form,ripetizione:e.target.value})} style={S.inputFull}>
-            <option value="nessuna">Nessuna</option>
-            <option value="annuale">Annuale (auto-rinnovo)</option>
-          </select>
+          <Sel value={form.ripetizione} onChange={e=>setForm({...form,ripetizione:e.target.value})} style={S.inputFull}
+            options={[{value:'nessuna',label:'Nessuna'},{value:'annuale',label:'Annuale (auto-rinnovo)'}]} />
         </FormField>
         <FormField label="Note">
-          <input value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Opzionale" style={S.inputFull} />
+          <Inp value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Opzionale" />
         </FormField>
         <FormField label="Importo stimato (€)">
-          <input type="number" value={form.importoStimato} onChange={e=>setForm({...form,importoStimato:e.target.value})} placeholder="Per creare spesa quando gestita" style={S.inputFull} />
+          <Inp type="number" value={form.importoStimato} onChange={e=>setForm({...form,importoStimato:e.target.value})} placeholder="Per creare spesa quando gestita" />
         </FormField>
         <div style={{display:'flex',gap:8}}>
           <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#F59E0B'),flex:1}}>{editId ? 'Aggiorna' : 'Aggiungi scadenza'}</motion.button>
@@ -1130,13 +1878,12 @@ function ScadenzeTab({ data, updateData }) {
         <AnimatePresence>
           {convertPrompt && (
             <motion.div initial={{opacity:0,height:0}} animate={{opacity:1,height:'auto'}} exit={{opacity:0,height:0}}
-              style={{marginTop:12,padding:14,background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:12}}>
+              style={{marginTop:12,padding:14,background:'#3B82F615',border:`1px solid ${t.border}`,borderRadius:12}}>
               <p style={{margin:'0 0 8px',fontSize:13,fontWeight:600,color:'#1D4ED8'}}><Fa icon='fa-solid fa-wallet' style={{marginRight:4}} />Registrare come spesa?</p>
               <p style={{margin:'0 0 8px',fontSize:12,color:'#3B82F6'}}>"{convertPrompt.nome}" — {convertPrompt.data}</p>
-              <input type="number" value={convertPrompt.importo} onChange={e=>setConvertPrompt({...convertPrompt,importo:e.target.value})} placeholder="Importo €" style={{...S.inputFull,marginBottom:8}} />
-              <select value={convertPrompt.categoria} onChange={e=>setConvertPrompt({...convertPrompt,categoria:e.target.value})} style={{...S.inputFull,marginBottom:8}}>
-                {data.categorieSpese.map(c=><option key={c}>{c}</option>)}
-              </select>
+              <Inp type="number" value={convertPrompt.importo} onChange={e=>setConvertPrompt({...convertPrompt,importo:e.target.value})} placeholder="Importo €" style={{marginBottom:8}} />
+              <Sel value={convertPrompt.categoria} onChange={e=>setConvertPrompt({...convertPrompt,categoria:e.target.value})} style={{...S.inputFull,marginBottom:8}}
+                options={data.categorieSpese.map(c=>({value:c,label:c}))} />
               <div style={{display:'flex',gap:6}}>
                 <motion.button whileTap={{scale:0.95}} onClick={convertToSpesa}
                   style={{flex:1,padding:'8px',background:'#3B82F6',color:'white',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>Sì, registra spesa</motion.button>
@@ -1220,10 +1967,8 @@ function AttivitaTab({ data, updateData }) {
                 {f}
               </motion.button>
             ))}
-            <select value={filtroStanza} onChange={e=>setFiltroStanza(e.target.value)} style={{...S.input,fontSize:12,padding:'5px 8px'}}>
-              <option value="Tutte">Tutte le stanze</option>
-              {STANZE.map(s=><option key={s}>{s}</option>)}
-            </select>
+            <Sel value={filtroStanza} onChange={e=>setFiltroStanza(e.target.value)} style={{...S.input,fontSize:12,padding:'5px 8px'}}
+              options={[{value:'Tutte',label:'Tutte le stanze'},...STANZE.map(s=>({value:s,label:s}))]} />
           </div>
 
           <p style={{margin:'0 0 8px',fontSize:11,color:t.textMut}}>Trascina per riordinare le attività</p>
@@ -1247,8 +1992,8 @@ function AttivitaTab({ data, updateData }) {
                         <p style={{margin:0,fontSize:14,color:a.completata?t.textMut:t.text,textDecoration:a.completata?'line-through':'none'}}>{a.testo}</p>
                         <div style={{display:'flex',gap:5,marginTop:3,flexWrap:'wrap'}}>
                           <span style={{fontSize:11,background:t.tagBg,color:t.tagText,padding:'1px 6px',borderRadius:6}}>{a.stanza}</span>
-                          {a.assegnato && <span style={{fontSize:11,background:'#EFF6FF',color:'#3B82F6',padding:'1px 6px',borderRadius:6}}><Fa icon='fa-solid fa-user' style={{marginRight:3}} />{a.assegnato}</span>}
-                          {a.contattoId && (()=>{const ct=data.contatti.find(c=>c.id===+a.contattoId||c.id===a.contattoId); return ct ? <span style={{fontSize:10,background:'#E0F2FE',color:'#0369A1',padding:'1px 5px',borderRadius:6}}><Fa icon='fa-solid fa-address-card' style={{marginRight:3}} />{ct.nome}</span> : null})()}
+                          {a.assegnato && <span style={{fontSize:11,background:'#3B82F618',color:'#3B82F6',padding:'1px 6px',borderRadius:6}}><Fa icon='fa-solid fa-user' style={{marginRight:3}} />{a.assegnato}</span>}
+                          {a.contattoId && (()=>{const ct=data.contatti.find(c=>c.id===+a.contattoId||c.id===a.contattoId); return ct ? <span style={{fontSize:10,background:'#0369A118',color:'#0369A1',padding:'1px 5px',borderRadius:6}}><Fa icon='fa-solid fa-address-card' style={{marginRight:3}} />{ct.nome}</span> : null})()}
                           <span style={{fontSize:11,background:pc[a.priorita]+'22',color:pc[a.priorita],padding:'1px 6px',borderRadius:6,fontWeight:600}}>{a.priorita}</span>
                         </div>
                       </div>
@@ -1266,31 +2011,25 @@ function AttivitaTab({ data, updateData }) {
       <div style={{...S.card,alignSelf:'start'}}>
         <h3 style={{margin:'0 0 16px',fontSize:16,fontWeight:600,color:t.text}}>{editId ? 'Modifica attivit\u00e0' : '+ Nuova attivit\u00e0'}</h3>
         <FormField label="Cosa fare" error={errors.testo}>
-          <input value={form.testo} onChange={e=>setForm({...form,testo:e.target.value})} placeholder="es. Riparare rubinetto" style={S.inputFull} onKeyDown={e=>e.key==='Enter'&&aggiungi()} />
+          <Inp value={form.testo} onChange={e=>setForm({...form,testo:e.target.value})} placeholder="es. Riparare rubinetto" onKeyDown={e=>e.key==='Enter'&&aggiungi()} />
         </FormField>
         <FormField label="Stanza">
-          <select value={form.stanza} onChange={e=>setForm({...form,stanza:e.target.value})} style={S.inputFull}>
-            {STANZE.map(s=><option key={s}>{s}</option>)}
-          </select>
+          <Sel value={form.stanza} onChange={e=>setForm({...form,stanza:e.target.value})} style={S.inputFull}
+            options={STANZE.map(s=>({value:s,label:s}))} />
         </FormField>
         <FormField label="Assegna a">
-          <select value={form.assegnato} onChange={e=>setForm({...form,assegnato:e.target.value})} style={S.inputFull}>
-            <option value="">— nessuno —</option>
-            {data.membrifamiglia.map(m=><option key={m}>{m}</option>)}
-          </select>
+          <Sel value={form.assegnato} onChange={e=>setForm({...form,assegnato:e.target.value})} style={S.inputFull}
+            options={[{value:'',label:'— nessuno —'},...data.membrifamiglia.map(m=>({value:m,label:m}))]} />
         </FormField>
         {data.contatti.length>0 && (
           <FormField label="Contatto collegato">
-            <select value={form.contattoId} onChange={e=>setForm({...form,contattoId:e.target.value})} style={S.inputFull}>
-              <option value="">— nessuno —</option>
-              {data.contatti.map(c=><option key={c.id} value={c.id}>{c.nome} ({c.ruolo})</option>)}
-            </select>
+            <Sel value={form.contattoId} onChange={e=>setForm({...form,contattoId:e.target.value})} style={S.inputFull}
+              options={[{value:'',label:'— nessuno —'},...data.contatti.map(c=>({value:String(c.id),label:c.nome+' ('+c.ruolo+')'}))]} />
           </FormField>
         )}
         <FormField label="Priorità">
-          <select value={form.priorita} onChange={e=>setForm({...form,priorita:e.target.value})} style={S.inputFull}>
-            {['Alta','Media','Bassa'].map(p=><option key={p}>{p}</option>)}
-          </select>
+          <Sel value={form.priorita} onChange={e=>setForm({...form,priorita:e.target.value})} style={S.inputFull}
+            options={['Alta','Media','Bassa'].map(p=>({value:p,label:p}))} />
         </FormField>
         <div style={{display:'flex',gap:8}}>
           <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#10B981'),flex:1}}>{editId ? 'Aggiorna' : 'Aggiungi attivit\u00e0'}</motion.button>
@@ -1314,13 +2053,22 @@ function ConsumiTab({ data, updateData }) {
   const t = useT(); const S = makeS(t); const toast = useToast()
   const w = useWindowWidth(); const mob = w < 768
   const [form, setForm] = useState({ mese:mc(), luce:'', gas:'', acqua:'' })
+  const [editMese, setEditMese] = useState(null)
 
   const salva = () => {
-    if (!form.luce&&!form.gas&&!form.acqua) return
+    if (!form.luce&&!form.gas&&!form.acqua) { toast('Inserisci almeno un valore'); return }
     const idx = data.consumi.findIndex(c=>c.mese===form.mese)
     if (idx>=0) { const u=[...data.consumi]; u[idx]={...form}; updateData('consumi',u); toast('Consumi aggiornati') }
     else { updateData('consumi', [...data.consumi, {...form,id:Date.now()}]); toast('Consumi salvati') }
+    setEditMese(null); setForm({ mese:mc(), luce:'', gas:'', acqua:'' })
   }
+
+  const startEdit = (c) => {
+    setForm({mese:c.mese,luce:String(c.luce||''),gas:String(c.gas||''),acqua:String(c.acqua||'')})
+    setEditMese(c.mese)
+  }
+
+  const cancelEdit = () => { setEditMese(null); setForm({ mese:mc(), luce:'', gas:'', acqua:'' }) }
 
   const rimuovi = (mese) => { if(!confirm('Eliminare questi consumi?')) return; updateData('consumi', data.consumi.filter(c=>c.mese!==mese)); toast('Consumi eliminati') }
 
@@ -1344,9 +2092,9 @@ function ConsumiTab({ data, updateData }) {
           <motion.div initial={{opacity:0,y:-8}} animate={{opacity:1,y:0}}
             style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(3,1fr)',gap:mob?8:12}}>
             {[
-              {label:'Media mensile',value:`€ ${media.toFixed(0)}`,color:'#8B5CF6',bg:'#F5F3FF'},
-              {label:'Ultimo mese',value:ult?`€ ${totC(ult).toFixed(0)}`:'—',color:ult&&totC(ult)>media?'#EF4444':'#10B981',bg:ult&&totC(ult)>media?'#FEF2F2':'#ECFDF5'},
-              {label:'Proiezione annuale',value:`€ ${(media*12).toFixed(0)}`,color:'#3B82F6',bg:'#EFF6FF'},
+              {label:'Media mensile',value:`€ ${media.toFixed(0)}`,color:'#8B5CF6',bg:'#8B5CF615'},
+              {label:'Ultimo mese',value:ult?`€ ${totC(ult).toFixed(0)}`:'—',color:ult&&totC(ult)>media?'#EF4444':'#10B981',bg:ult&&totC(ult)>media?'#EF444415':'#10B98115'},
+              {label:'Proiezione annuale',value:`€ ${(media*12).toFixed(0)}`,color:'#3B82F6',bg:'#3B82F615'},
             ].map(st=>(
               <div key={st.label} style={{...S.card,padding:mob?10:14,textAlign:'center'}}>
                 <p style={{margin:'0 0 3px',fontSize:11,color:t.textSec}}>{st.label}</p>
@@ -1395,7 +2143,7 @@ function ConsumiTab({ data, updateData }) {
                       <span><Fa icon='fa-solid fa-droplet' style={{marginRight:2}} />{(+(c.acqua||0)).toFixed(0)}</span>
                       <span style={{fontWeight:700,color:sopra?'#EF4444':'#10B981',minWidth:52,textAlign:'right'}}>€{tot.toFixed(0)}</span>
                     </div>
-                    <motion.button whileTap={{scale:0.85}} onClick={()=>{setForm({mese:c.mese,luce:String(c.luce||''),gas:String(c.gas||''),acqua:String(c.acqua||'')})}}
+                    <motion.button whileTap={{scale:0.85}} onClick={()=>startEdit(c)}
                       style={{background:'none',border:'none',cursor:'pointer',fontSize:14,padding:'0 2px'}}><Fa icon='fa-solid fa-pen' /></motion.button>
                     <motion.button whileTap={{scale:0.85}} onClick={()=>rimuovi(c.mese)}
                       style={{background:'none',border:'none',cursor:'pointer',color:t.textMut,fontSize:18,marginLeft:6}}>×</motion.button>
@@ -1408,30 +2156,33 @@ function ConsumiTab({ data, updateData }) {
       </div>
 
       <div style={{...S.card,alignSelf:'start'}}>
-        <h3 style={{margin:'0 0 16px',fontSize:16,fontWeight:600,color:t.text}}>+ Inserisci consumi</h3>
+        <h3 style={{margin:'0 0 16px',fontSize:16,fontWeight:600,color:t.text}}>{editMese ? 'Modifica consumi' : '+ Inserisci consumi'}</h3>
         <FormField label="Mese">
-          <input type="month" value={form.mese} onChange={e=>setForm({...form,mese:e.target.value})} style={S.inputFull} />
+          <MonthPick value={form.mese} onChange={e=>setForm({...form,mese:e.target.value})} style={S.inputFull} />
         </FormField>
         <FormField label="Luce (€)">
-          <input type="number" value={form.luce} onChange={e=>setForm({...form,luce:e.target.value})} placeholder="0.00" style={S.inputFull} />
+          <Inp type="number" value={form.luce} onChange={e=>setForm({...form,luce:e.target.value})} placeholder="0.00" />
         </FormField>
         <FormField label="Gas (€)">
-          <input type="number" value={form.gas} onChange={e=>setForm({...form,gas:e.target.value})} placeholder="0.00" style={S.inputFull} />
+          <Inp type="number" value={form.gas} onChange={e=>setForm({...form,gas:e.target.value})} placeholder="0.00" />
         </FormField>
         <FormField label="Acqua (€)">
-          <input type="number" value={form.acqua} onChange={e=>setForm({...form,acqua:e.target.value})} placeholder="0.00" style={S.inputFull} />
+          <Inp type="number" value={form.acqua} onChange={e=>setForm({...form,acqua:e.target.value})} placeholder="0.00" />
         </FormField>
         <AnimatePresence>
           {formTot>0 && (
             <motion.div initial={{opacity:0,height:0}} animate={{opacity:1,height:'auto'}} exit={{opacity:0,height:0}}
-              style={{marginBottom:10,padding:'10px 12px',background:'#F5F3FF',borderRadius:10,fontSize:13,color:'#8B5CF6',fontWeight:600}}>
+              style={{marginBottom:10,padding:'10px 12px',background:'#8B5CF615',borderRadius:10,fontSize:13,color:'#8B5CF6',fontWeight:600}}>
               Totale: € {formTot.toFixed(2)}
               {media>0 && <span style={{fontSize:11,color:formTot>media?'#EF4444':'#10B981',marginLeft:8}}>({formTot>media?'↑':'↓'} media € {media.toFixed(0)})</span>}
             </motion.div>
           )}
         </AnimatePresence>
-        <p style={{margin:'0 0 8px',fontSize:11,color:t.textMut}}>Se il mese esiste già, i dati verranno aggiornati.</p>
-        <motion.button whileTap={{scale:0.97}} onClick={salva} style={S.btn('#8B5CF6')}>Salva consumi</motion.button>
+        <p style={{margin:'0 0 8px',fontSize:11,color:t.textMut}}>{editMese ? 'Stai modificando i consumi di questo mese.' : 'Se il mese esiste già, i dati verranno aggiornati.'}</p>
+        <div style={{display:'flex',gap:8}}>
+          <motion.button whileTap={{scale:0.97}} onClick={salva} style={{...S.btn('#8B5CF6'),flex:1}}>{editMese ? 'Aggiorna consumi' : 'Salva consumi'}</motion.button>
+          {editMese && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px'}}>Annulla</motion.button>}
+        </div>
         {ult&&penu && (
           <motion.div initial={{opacity:0}} animate={{opacity:1}} style={{marginTop:12,padding:'10px 12px',background:t.rowBg,borderRadius:10}}>
             <p style={{margin:'0 0 3px',fontSize:11,color:t.textSec}}>Confronto ultimi 2 mesi</p>
@@ -1498,17 +2249,74 @@ function AnalyticsTab({ data }) {
         ))}
       </div>
 
-      <div style={S.card}>
-        <h3 style={{margin:'0 0 14px',fontSize:15,fontWeight:600,color:t.text}}>Trend annuale — {anno} vs {anno-1}</h3>
-        <ResponsiveContainer width="100%" height={mob?220:300}>
-          <AreaChart data={datiMensili}>
-            <CartesianGrid strokeDasharray="3 3" stroke={t.border} />
-            <XAxis dataKey="name" tick={{fontSize:11,fill:t.textMut}} />
-            <YAxis tick={{fontSize:11,fill:t.textMut}} />
-            <Tooltip formatter={(v,n)=>[`€ ${v}`,n]} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8}} />
-            <Legend />
-            <Area type="monotone" dataKey={anno} stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.15} strokeWidth={2} />
-            <Area type="monotone" dataKey={anno-1} stroke="#94A3B8" fill="#94A3B8" fillOpacity={0.08} strokeWidth={1.5} strokeDasharray="5 5" />
+      <div style={{...S.card,overflow:'hidden',position:'relative'}}>
+        <div style={{position:'absolute',top:0,right:0,width:180,height:180,borderRadius:'50%',
+          background:'radial-gradient(circle,rgba(59,130,246,0.06) 0%,transparent 70%)',pointerEvents:'none'}} />
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
+          <div>
+            <h3 style={{margin:0,fontSize:16,fontWeight:700,color:t.text}}>Trend annuale</h3>
+            <p style={{margin:'2px 0 0',fontSize:12,color:t.textMut}}>{anno} vs {anno-1}</p>
+          </div>
+          <div style={{display:'flex',gap:14,alignItems:'center'}}>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <div style={{width:22,height:3,borderRadius:2,background:'linear-gradient(90deg,#3B82F6,#8B5CF6)'}} />
+              <span style={{fontSize:11,fontWeight:600,color:t.textSec}}>{anno}</span>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <div style={{width:22,height:3,borderRadius:2,background:'#CBD5E1',opacity:0.6}} />
+              <span style={{fontSize:11,fontWeight:500,color:t.textMut}}>{anno-1}</span>
+            </div>
+          </div>
+        </div>
+        <ResponsiveContainer width="100%" height={mob?240:320}>
+          <AreaChart data={datiMensili} margin={{top:5,right:8,left:-10,bottom:0}}>
+            <defs>
+              <linearGradient id="gradCorr" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.28} />
+                <stop offset="50%" stopColor="#8B5CF6" stopOpacity={0.10} />
+                <stop offset="100%" stopColor="#8B5CF6" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="gradPrec" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#94A3B8" stopOpacity={0.10} />
+                <stop offset="100%" stopColor="#94A3B8" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#3B82F6" />
+                <stop offset="100%" stopColor="#8B5CF6" />
+              </linearGradient>
+            </defs>
+            <CartesianGrid vertical={false} strokeDasharray="3 3" stroke={t.border} strokeOpacity={0.5} />
+            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize:11,fontWeight:500,fill:t.textMut}} dy={8} />
+            <YAxis axisLine={false} tickLine={false} tick={{fontSize:10,fill:t.textMut}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(1)}k`:`€${v}`} />
+            <Tooltip cursor={{stroke:t.border,strokeDasharray:'4 4'}}
+              content={({active,payload,label})=>{
+                if(!active||!payload?.length) return null
+                return <div style={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:14,padding:'12px 16px',
+                  boxShadow:'0 8px 24px rgba(0,0,0,0.12)',backdropFilter:'blur(8px)'}}>
+                  <p style={{margin:'0 0 8px',fontSize:13,fontWeight:700,color:t.text}}>{label}</p>
+                  {payload.map((p,i)=>(
+                    <div key={i} style={{display:'flex',alignItems:'center',gap:8,marginBottom:i<payload.length-1?4:0}}>
+                      <div style={{width:8,height:8,borderRadius:'50%',background:i===0?'#3B82F6':'#94A3B8',
+                        boxShadow:i===0?'0 0 6px rgba(59,130,246,0.4)':'none'}} />
+                      <span style={{fontSize:12,color:t.textSec,minWidth:30}}>{p.name}</span>
+                      <span style={{fontSize:13,fontWeight:700,color:i===0?'#3B82F6':t.textMut}}>€ {p.value?.toLocaleString('it-IT')}</span>
+                    </div>
+                  ))}
+                  {payload.length===2 && payload[1].value>0 && (()=>{
+                    const diff = payload[0].value - payload[1].value
+                    const perc = ((diff/payload[1].value)*100).toFixed(0)
+                    return <div style={{marginTop:8,paddingTop:6,borderTop:`1px solid ${t.border}`,display:'flex',alignItems:'center',gap:4}}>
+                      <Fa icon={diff>=0?'fa-solid fa-arrow-trend-up':'fa-solid fa-arrow-trend-down'} style={{fontSize:10,color:diff>=0?'#EF4444':'#10B981'}} />
+                      <span style={{fontSize:11,fontWeight:600,color:diff>=0?'#EF4444':'#10B981'}}>{diff>=0?'+':''}{perc}%</span>
+                    </div>
+                  })()}
+                </div>
+              }}
+            />
+            <Area type="natural" dataKey={anno-1} stroke="#CBD5E1" fill="url(#gradPrec)" strokeWidth={2} strokeDasharray="6 4"
+              dot={false} activeDot={{r:4,fill:'#94A3B8',stroke:'white',strokeWidth:2}} />
+            <Area type="natural" dataKey={anno} stroke="url(#lineGrad)" fill="url(#gradCorr)" strokeWidth={2.5}
+              dot={false} activeDot={{r:6,fill:'#3B82F6',stroke:'white',strokeWidth:3,style:{filter:'drop-shadow(0 2px 6px rgba(59,130,246,0.4))'}}} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -1576,15 +2384,15 @@ function AnalyticsTab({ data }) {
           <div style={S.card}>
             <h3 style={{margin:'0 0 14px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-scale-balanced' style={{marginRight:6}} />Bilancio annuale {anno}</h3>
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12,marginBottom:14}}>
-              <div style={{padding:12,background:'#EFF6FF',borderRadius:10,textAlign:'center'}}>
+              <div style={{padding:12,background:'#3B82F615',borderRadius:10,textAlign:'center'}}>
                 <p style={{margin:'0 0 2px',fontSize:11,color:t.textSec}}>Stipendi totali</p>
                 <p style={{margin:0,fontSize:20,fontWeight:700,color:'#3B82F6'}}>€ {totStipAnno.toFixed(0)}</p>
               </div>
-              <div style={{padding:12,background:'#FEF2F2',borderRadius:10,textAlign:'center'}}>
+              <div style={{padding:12,background:'#EF444415',borderRadius:10,textAlign:'center'}}>
                 <p style={{margin:'0 0 2px',fontSize:11,color:t.textSec}}>Spese totali</p>
                 <p style={{margin:0,fontSize:20,fontWeight:700,color:'#EF4444'}}>€ {totCorr.toFixed(0)}</p>
               </div>
-              <div style={{padding:12,background:bilancio>=0?'#ECFDF5':'#FEF2F2',borderRadius:10,textAlign:'center'}}>
+              <div style={{padding:12,background:bilancio>=0?'#10B98115':'#EF444415',borderRadius:10,textAlign:'center'}}>
                 <p style={{margin:'0 0 2px',fontSize:11,color:t.textSec}}>Saldo</p>
                 <p style={{margin:0,fontSize:20,fontWeight:700,color:bilancio>=0?'#10B981':'#EF4444'}}>{bilancio>=0?'+':''}€ {bilancio.toFixed(0)}</p>
               </div>
@@ -1725,7 +2533,7 @@ function CalendarioTab({ data, updateData }) {
               <div style={{marginBottom:12}}>
                 <p style={{margin:'0 0 6px',fontSize:12,fontWeight:600,color:'#F59E0B'}}><Fa icon='fa-regular fa-calendar-check' style={{marginRight:4}} />Scadenze</p>
                 {dettagli.scadenze.map(s=>(
-                  <div key={s.id} style={{padding:'6px 8px',background:'#FFFBEB',borderRadius:8,marginBottom:4,fontSize:13,color:t.text}}>{s.nome}</div>
+                  <div key={s.id} style={{padding:'6px 8px',background:'#F59E0B15',borderRadius:8,marginBottom:4,fontSize:13,color:t.text}}>{s.nome}</div>
                 ))}
               </div>
             )}
@@ -1733,7 +2541,7 @@ function CalendarioTab({ data, updateData }) {
               <div style={{marginBottom:12}}>
                 <p style={{margin:'0 0 6px',fontSize:12,fontWeight:600,color:'#10B981'}}><Fa icon='fa-solid fa-list-check' style={{marginRight:4}} />Attività</p>
                 {dettagli.attivita.map(a=>(
-                  <div key={a.id} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 8px',background:'#ECFDF5',borderRadius:8,marginBottom:4,fontSize:13,color:t.text}}>
+                  <div key={a.id} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 8px',background:'#10B98115',borderRadius:8,marginBottom:4,fontSize:13,color:t.text}}>
                     <span style={{width:6,height:6,borderRadius:'50%',background:({Alta:'#EF4444',Media:'#F59E0B',Bassa:'#10B981'})[a.priorita]||'#94A3B8'}} />
                     {a.testo}
                   </div>
@@ -1744,7 +2552,7 @@ function CalendarioTab({ data, updateData }) {
               <div>
                 <p style={{margin:'0 0 6px',fontSize:12,fontWeight:600,color:'#3B82F6'}}><Fa icon='fa-solid fa-wallet' style={{marginRight:4}} />Spese</p>
                 {dettagli.spese.map(s=>(
-                  <div key={s.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 8px',background:'#EFF6FF',borderRadius:8,marginBottom:4,fontSize:13}}>
+                  <div key={s.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 8px',background:'#3B82F615',borderRadius:8,marginBottom:4,fontSize:13}}>
                     <span style={{color:t.text}}>{s.descrizione}</span>
                     <span style={{fontWeight:600,color:t.text}}>€ {(+s.importo).toFixed(2)}</span>
                   </div>
@@ -1767,14 +2575,13 @@ function CalendarioTab({ data, updateData }) {
             ) : (
               <div style={{marginTop:14,padding:12,background:t.rowBg,borderRadius:10}}>
                 <p style={{margin:'0 0 8px',fontSize:13,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-wallet' style={{marginRight:4}} />Nuova spesa — {selGiorno} {MESI_FULL[mese]}</p>
-                <input value={nuovaSpesa.descrizione} onChange={e=>setNuovaSpesa({...nuovaSpesa,descrizione:e.target.value})} placeholder="Descrizione" style={{...S.inputFull,marginBottom:6}} />
-                <input type="number" value={nuovaSpesa.importo} onChange={e=>setNuovaSpesa({...nuovaSpesa,importo:e.target.value})} placeholder="Importo €" style={{...S.inputFull,marginBottom:6}} />
-                <select value={nuovaSpesa.categoria} onChange={e=>setNuovaSpesa({...nuovaSpesa,categoria:e.target.value})} style={{...S.inputFull,marginBottom:8}}>
-                  {data.categorieSpese.map(c=><option key={c}>{c}</option>)}
-                </select>
+                <Inp value={nuovaSpesa.descrizione} onChange={e=>setNuovaSpesa({...nuovaSpesa,descrizione:e.target.value})} placeholder="Descrizione" style={{marginBottom:6}} />
+                <Inp type="number" value={nuovaSpesa.importo} onChange={e=>setNuovaSpesa({...nuovaSpesa,importo:e.target.value})} placeholder="Importo €" style={{marginBottom:6}} />
+                <Sel value={nuovaSpesa.categoria} onChange={e=>setNuovaSpesa({...nuovaSpesa,categoria:e.target.value})} style={{...S.inputFull,marginBottom:8}}
+                  options={data.categorieSpese.map(c=>({value:c,label:c}))} />
                 <div style={{display:'flex',gap:6}}>
                   <motion.button whileTap={{scale:0.95}} onClick={()=>{
-                    if(!nuovaSpesa.descrizione.trim()||!nuovaSpesa.importo||+nuovaSpesa.importo<=0) return
+                    if(!nuovaSpesa.descrizione.trim()||!nuovaSpesa.importo||+nuovaSpesa.importo<=0) { toast('Compila descrizione e importo'); return }
                     const ds = `${meseStr}-${String(selGiorno).padStart(2,'0')}`
                     updateData('spese',[...data.spese,{id:Date.now(),descrizione:nuovaSpesa.descrizione,importo:+nuovaSpesa.importo,categoria:nuovaSpesa.categoria,data:ds,ricorrente:false,pagatoDa:'',condivisa:false}])
                     setNuovaSpesa({descrizione:'',importo:'',categoria:data.categorieSpese[0]||'Casa'})
@@ -1828,8 +2635,8 @@ function NoteTab({ data, updateData }) {
       <h2 style={{margin:'0 0 16px',fontSize:18,fontWeight:700,color:t.text}}><Fa icon='fa-regular fa-note-sticky' style={{marginRight:6}} />Note & Appunti</h2>
 
       <div style={{...S.card,marginBottom:16}}>
-        <textarea value={testo} onChange={e=>setTesto(e.target.value)} placeholder="Scrivi un appunto... (es. chiamare idraulico, codice WiFi, ecc.)"
-          style={{...S.inputFull,minHeight:80,resize:'vertical',fontFamily:'inherit'}} />
+        <Txa value={testo} onChange={e=>setTesto(e.target.value)} placeholder="Scrivi un appunto... (es. chiamare idraulico, codice WiFi, ecc.)"
+          style={{minHeight:80}} />
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:10}}>
           <div style={{display:'flex',gap:6}}>
             {NOTE_COLORI.map(c=>(
@@ -1853,8 +2660,8 @@ function NoteTab({ data, updateData }) {
                   style={{background:n.colore||NOTE_COLORI[0],borderRadius:14,padding:16,position:'relative',minHeight:100}}>
                   {editId===n.id ? (
                     <>
-                      <textarea value={editTesto} onChange={e=>setEditTesto(e.target.value)}
-                        style={{width:'100%',minHeight:60,resize:'vertical',border:'none',background:'rgba(255,255,255,0.5)',borderRadius:8,padding:8,fontSize:14,fontFamily:'inherit',outline:'none',boxSizing:'border-box',color:'#1E293B'}} />
+                      <Txa value={editTesto} onChange={e=>setEditTesto(e.target.value)}
+                        style={{minHeight:60,border:'none',background:'rgba(255,255,255,0.5)',borderRadius:8,padding:8,color:'#1E293B'}} />
                       <div style={{display:'flex',gap:6,marginTop:8}}>
                         <button onClick={()=>salvaEdit(n.id)} style={{padding:'4px 12px',background:'#10B981',color:'white',border:'none',borderRadius:6,fontSize:12,cursor:'pointer'}}>Salva</button>
                         <button onClick={()=>setEditId(null)} style={{padding:'4px 12px',background:'#94A3B8',color:'white',border:'none',borderRadius:6,fontSize:12,cursor:'pointer'}}>Annulla</button>
@@ -1929,7 +2736,7 @@ function ContattiTab({ data, updateData }) {
               {data.contatti.map(c=>(
                 <motion.div key={c.id} layout variants={ITEM_V} initial="initial" animate="animate" exit="exit"
                   style={{display:'flex',alignItems:'center',gap:12,padding:'12px 14px',background:t.rowBg,borderRadius:12,marginBottom:8}}>
-                  <div style={{width:42,height:42,borderRadius:10,background:'#EFF6FF',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}}>
+                  <div style={{width:42,height:42,borderRadius:10,background:'#3B82F615',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0,color:'#3B82F6'}}>
                     {ruoloEmoji[c.ruolo]||<Fa icon='fa-solid fa-phone' />}
                   </div>
                   <div style={{flex:1}}>
@@ -1950,18 +2757,17 @@ function ContattiTab({ data, updateData }) {
       <div style={{...S.card,alignSelf:'start'}}>
         <h3 style={{margin:'0 0 16px',fontSize:16,fontWeight:600,color:t.text}}>{editId ? 'Modifica contatto' : '+ Nuovo contatto'}</h3>
         <FormField label="Nome" error={errors.nome}>
-          <input value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} placeholder="es. Mario Rossi" style={S.inputFull} onKeyDown={e=>e.key==='Enter'&&aggiungi()} />
+          <Inp value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} placeholder="es. Mario Rossi" onKeyDown={e=>e.key==='Enter'&&aggiungi()} />
         </FormField>
         <FormField label="Ruolo">
-          <select value={form.ruolo} onChange={e=>setForm({...form,ruolo:e.target.value})} style={S.inputFull}>
-            {RUOLI_CONTATTI.map(r=><option key={r}>{r}</option>)}
-          </select>
+          <Sel value={form.ruolo} onChange={e=>setForm({...form,ruolo:e.target.value})} style={S.inputFull}
+            options={RUOLI_CONTATTI.map(r=>({value:r,label:r}))} />
         </FormField>
         <FormField label="Telefono" error={errors.telefono}>
-          <input value={form.telefono} onChange={e=>setForm({...form,telefono:e.target.value})} placeholder="es. 333 1234567" style={S.inputFull} />
+          <Inp value={form.telefono} onChange={e=>setForm({...form,telefono:e.target.value})} placeholder="es. 333 1234567" />
         </FormField>
         <FormField label="Note">
-          <input value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Opzionale" style={S.inputFull} />
+          <Inp value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Opzionale" />
         </FormField>
         <div style={{display:'flex',gap:8}}>
           <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#06B6D4'),flex:1}}>{editId ? 'Aggiorna' : 'Aggiungi contatto'}</motion.button>
@@ -2022,7 +2828,7 @@ function InventarioTab({ data, updateData }) {
       <div style={{display:'flex',flexDirection:'column',gap:16}}>
         {garantieInScadenza>0 && (
           <motion.div initial={{opacity:0}} animate={{opacity:1}}
-            style={{background:'#FFFBEB',border:'1px solid #FDE68A',borderRadius:12,padding:'11px 16px',color:'#D97706',fontSize:14,fontWeight:500}}>
+            style={{background:'#F59E0B15',border:`1px solid ${t.border}`,borderRadius:12,padding:'11px 16px',color:'#D97706',fontSize:14,fontWeight:500}}>
             <Fa icon='fa-solid fa-triangle-exclamation' /> {garantieInScadenza} garanzi{garantieInScadenza===1?'a':'e'} in scadenza entro 90 giorni
           </motion.div>
         )}
@@ -2030,10 +2836,8 @@ function InventarioTab({ data, updateData }) {
         <div style={S.card}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
             <h2 style={{margin:0,fontSize:18,fontWeight:700,color:t.text}}><Fa icon='fa-solid fa-box-open' style={{marginRight:6}} />Inventario casa</h2>
-            <select value={filtroStanza} onChange={e=>setFiltroStanza(e.target.value)} style={{...S.input,fontSize:12}}>
-              <option value="Tutte">Tutte le stanze</option>
-              {STANZE.map(s=><option key={s}>{s}</option>)}
-            </select>
+            <Sel value={filtroStanza} onChange={e=>setFiltroStanza(e.target.value)} style={{...S.input,fontSize:12}}
+              options={[{value:'Tutte',label:'Tutte le stanze'},...STANZE.map(s=>({value:s,label:s}))]} />
           </div>
 
           {lista.length===0
@@ -2069,21 +2873,20 @@ function InventarioTab({ data, updateData }) {
       <div style={{...S.card,alignSelf:'start'}}>
         <h3 style={{margin:'0 0 16px',fontSize:16,fontWeight:600,color:t.text}}>{editId ? 'Modifica oggetto' : '+ Nuovo oggetto'}</h3>
         <FormField label="Nome oggetto" error={errors.nome}>
-          <input value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} placeholder="es. Lavatrice" style={S.inputFull} onKeyDown={e=>e.key==='Enter'&&aggiungi()} />
+          <Inp value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} placeholder="es. Lavatrice" onKeyDown={e=>e.key==='Enter'&&aggiungi()} />
         </FormField>
         <FormField label="Stanza">
-          <select value={form.stanza} onChange={e=>setForm({...form,stanza:e.target.value})} style={S.inputFull}>
-            {STANZE.map(s=><option key={s}>{s}</option>)}
-          </select>
+          <Sel value={form.stanza} onChange={e=>setForm({...form,stanza:e.target.value})} style={S.inputFull}
+            options={STANZE.map(s=>({value:s,label:s}))} />
         </FormField>
         <FormField label="Data acquisto">
-          <input type="date" value={form.dataAcquisto} onChange={e=>setForm({...form,dataAcquisto:e.target.value})} style={S.inputFull} />
+          <DatePick value={form.dataAcquisto} onChange={e=>setForm({...form,dataAcquisto:e.target.value})} style={S.inputFull} />
         </FormField>
         <FormField label="Scadenza garanzia">
-          <input type="date" value={form.scadenzaGaranzia} onChange={e=>setForm({...form,scadenzaGaranzia:e.target.value})} style={S.inputFull} />
+          <DatePick value={form.scadenzaGaranzia} onChange={e=>setForm({...form,scadenzaGaranzia:e.target.value})} style={S.inputFull} />
         </FormField>
         <FormField label="Note">
-          <input value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Opzionale" style={S.inputFull} />
+          <Inp value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Opzionale" />
         </FormField>
         <div style={{display:'flex',gap:8}}>
           <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#8B5CF6'),flex:1}}>{editId ? 'Aggiorna' : 'Aggiungi oggetto'}</motion.button>
@@ -2098,10 +2901,10 @@ function InventarioTab({ data, updateData }) {
 function StipendioTab({ data, updateData }) {
   const t = useT(); const S = makeS(t); const toast = useToast()
   const w = useWindowWidth(); const mob = w < 768
-  const [form, setForm] = useState({ importo:'', mese:mc(), note:'' })
+  const [form, setForm] = useState({ importo:'', mese:mc(), note:'', conto:'' })
   const [errors, setErrors] = useState({})
   const [editId, setEditId] = useState(null)
-  const formDefault = { importo:'', mese:mc(), note:'' }
+  const formDefault = { importo:'', mese:mc(), note:'', conto:'' }
 
   const stipendi = data.stipendi || []
   const meseCorrente = mc()
@@ -2110,30 +2913,43 @@ function StipendioTab({ data, updateData }) {
     const e = {}
     if (!form.importo || +form.importo <= 0) e.importo = 'Importo non valido'
     if (!form.mese) e.mese = 'Seleziona un mese'
-    if (stipendi.find(s => s.mese === form.mese)) e.mese = 'Mese già registrato'
+    const duplicato = stipendi.find(s => s.mese === form.mese && s.id !== editId)
+    if (duplicato) e.mese = 'Mese già registrato'
     setErrors(e); return !Object.keys(e).length
   }
 
   const aggiungi = () => {
     if (!validate()) return
-    const nuovoStipendio = { id:Date.now(), importo:+form.importo, mese:form.mese, note:form.note.trim(), data:new Date().toISOString().slice(0,10) }
-    const nuovi = [...stipendi, nuovoStipendio].sort((a,b) => b.mese.localeCompare(a.mese))
-    updateData('stipendi', nuovi)
-    // aggiorna entrateMensili con l'ultimo stipendio versato
-    updateData('entrateMensili', +form.importo)
-    setForm({ importo:'', mese:mc(), note:'' })
-    setErrors({})
+    if (editId) {
+      const nuovi = stipendi.map(s => s.id === editId ? { ...s, importo:+form.importo, mese:form.mese, note:form.note.trim(), conto:form.conto||undefined } : s)
+      updateData('stipendi', nuovi.sort((a,b) => b.mese.localeCompare(a.mese)))
+      toast('Stipendio aggiornato')
+    } else {
+      const nuovoStipendio = { id:Date.now(), importo:+form.importo, mese:form.mese, note:form.note.trim(), data:new Date().toISOString().slice(0,10), conto:form.conto||undefined }
+      const nuovi = [...stipendi, nuovoStipendio].sort((a,b) => b.mese.localeCompare(a.mese))
+      updateData('stipendi', nuovi)
+      updateData('entrateMensili', +form.importo)
+      toast('Stipendio registrato')
+    }
+    setEditId(null); setForm(formDefault); setErrors({})
   }
 
   const rimuovi = (id) => {
     const nuovi = stipendi.filter(s => s.id !== id)
     updateData('stipendi', nuovi)
-    // ricalcola entrate dall'ultimo stipendio rimasto
     if (nuovi.length > 0) {
       const ultimo = [...nuovi].sort((a,b) => b.mese.localeCompare(a.mese))[0]
       updateData('entrateMensili', ultimo.importo)
     }
   }
+
+  const startEdit = (s) => {
+    setEditId(s.id)
+    setForm({ importo:String(s.importo), mese:s.mese, note:s.note||'', conto:s.conto||'' })
+    setErrors({})
+  }
+
+  const cancelEdit = () => { setEditId(null); setForm(formDefault); setErrors({}) }
 
   // statistiche
   const stipMeseCorr = stipendi.find(s => s.mese === meseCorrente)
@@ -2167,18 +2983,18 @@ function StipendioTab({ data, updateData }) {
         <div style={S.card}>
           <h2 style={{margin:'0 0 16px',fontSize:18,fontWeight:700,color:t.text}}><Fa icon='fa-solid fa-briefcase' style={{marginRight:6}} />Stipendio</h2>
           <div style={{display:'flex',gap:mob?8:12,marginBottom:14,flexWrap:'wrap'}}>
-            <div style={{flex:1,minWidth:mob?100:140,background:'#EFF6FF',borderRadius:12,padding:mob?10:14,textAlign:'center'}}>
+            <div style={{flex:1,minWidth:mob?100:140,background:'#3B82F615',borderRadius:12,padding:mob?10:14,textAlign:'center'}}>
               <p style={{margin:'0 0 2px',fontSize:12,color:t.textSec}}>Mese corrente</p>
               <p style={{margin:0,fontSize:mob?18:24,fontWeight:700,color:'#3B82F6'}}>
                 {stipMeseCorr ? `€ ${stipMeseCorr.importo.toFixed(2)}` : '—'}
               </p>
               <p style={{margin:'2px 0 0',fontSize:11,color:t.textMut}}>{MESI_FULL[new Date().getMonth()]} {new Date().getFullYear()}</p>
             </div>
-            <div style={{flex:1,minWidth:mob?100:140,background:'#ECFDF5',borderRadius:12,padding:mob?10:14,textAlign:'center'}}>
+            <div style={{flex:1,minWidth:mob?100:140,background:'#10B98115',borderRadius:12,padding:mob?10:14,textAlign:'center'}}>
               <p style={{margin:'0 0 2px',fontSize:12,color:t.textSec}}>Totale anno</p>
               <p style={{margin:0,fontSize:mob?18:24,fontWeight:700,color:'#10B981'}}>€ {totAnnoCorr.toFixed(2)}</p>
             </div>
-            <div style={{flex:1,minWidth:mob?100:140,background:'#FFFBEB',borderRadius:12,padding:mob?10:14,textAlign:'center'}}>
+            <div style={{flex:1,minWidth:mob?100:140,background:'#F59E0B15',borderRadius:12,padding:mob?10:14,textAlign:'center'}}>
               <p style={{margin:'0 0 2px',fontSize:12,color:t.textSec}}>Media mensile</p>
               <p style={{margin:0,fontSize:mob?18:24,fontWeight:700,color:'#F59E0B'}}>€ {media.toFixed(2)}</p>
             </div>
@@ -2252,7 +3068,7 @@ function StipendioTab({ data, updateData }) {
                   return (
                     <motion.div key={s.id} layout initial={{opacity:0,y:8}} animate={{opacity:1,y:0}}
                       style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',background:t.rowBg,borderRadius:10}}>
-                      <div style={{width:40,height:40,borderRadius:10,background:'#EFF6FF',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                      <div style={{width:40,height:40,borderRadius:10,background:'#3B82F615',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                         <span style={{fontSize:12,fontWeight:700,color:'#3B82F6'}}>{MESI[mIdx]}</span>
                       </div>
                       <div style={{flex:1}}>
@@ -2287,16 +3103,22 @@ function StipendioTab({ data, updateData }) {
         <div style={S.card}>
           <h3 style={{margin:'0 0 16px',fontSize:16,fontWeight:600,color:t.text}}>{editId ? 'Modifica versamento' : '+ Registra versamento'}</h3>
           <FormField label="Importo versato (€)" error={errors.importo}>
-            <input type="number" value={form.importo} onChange={e => setForm({...form, importo:e.target.value})}
-              placeholder="es. 1500" style={S.inputFull} onKeyDown={e => e.key === 'Enter' && aggiungi()} />
+            <Inp type="number" value={form.importo} onChange={e => setForm({...form, importo:e.target.value})}
+              placeholder="es. 1500" onKeyDown={e => e.key === 'Enter' && aggiungi()} />
           </FormField>
           <FormField label="Mese di riferimento" error={errors.mese}>
-            <input type="month" value={form.mese} onChange={e => setForm({...form, mese:e.target.value})} style={S.inputFull} />
+            <MonthPick value={form.mese} onChange={e => setForm({...form, mese:e.target.value})} style={S.inputFull} />
           </FormField>
           <FormField label="Note (opzionale)">
-            <input value={form.note} onChange={e => setForm({...form, note:e.target.value})}
-              placeholder="es. Tredicesima, straordinari..." style={S.inputFull} />
+            <Inp value={form.note} onChange={e => setForm({...form, note:e.target.value})}
+              placeholder="es. Tredicesima, straordinari..." />
           </FormField>
+          {(data.conti||[]).length>1 && (
+            <FormField label="Conto">
+              <Sel value={form.conto} onChange={e=>setForm({...form,conto:e.target.value})} style={S.inputFull}
+                options={[{value:'',label:'\u2014 tutti \u2014'},...(data.conti||[]).map(c=>({value:c.nome,label:c.nome}))]} />
+            </FormField>
+          )}
           <div style={{display:'flex',gap:8}}>
             <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#3B82F6'),flex:1}}>{editId ? 'Aggiorna' : 'Registra versamento'}</motion.button>
             {editId && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px'}}>Annulla</motion.button>}
@@ -2328,7 +3150,7 @@ function StipendioTab({ data, updateData }) {
               })()}
             </div>
             {entrate - (data.budget || 0) - quotaAccant < 0 && (
-              <div style={{padding:8,background:'#FEF2F2',borderRadius:8,marginTop:4}}>
+              <div style={{padding:8,background:'#EF444415',borderRadius:8,marginTop:4}}>
                 <p style={{margin:0,fontSize:12,color:'#EF4444',fontWeight:500}}><Fa icon='fa-solid fa-triangle-exclamation' /> Budget + accantonamenti superano lo stipendio di € {Math.abs(entrate - (data.budget || 0) - quotaAccant).toFixed(2)}</p>
               </div>
             )}
@@ -2370,32 +3192,31 @@ function AccantonamentiTab({ data, updateData }) {
 
   const aggiungi = () => {
     if (!validate()) return
-    const nuovo = {
-      id: Date.now(),
-      nome: form.nome.trim(),
-      tipo: form.tipo,
-      percentuale: +form.percentuale || 0,
-      importoManuale: +form.importoManuale || 0,
-      accantonato: 0,
-      obiettivo: +form.obiettivo,
+    if (editId) {
+      updateData('accantonamenti', accantonamenti.map(a => a.id === editId ? {
+        ...a,
+        nome: form.nome.trim(),
+        tipo: form.tipo,
+        percentuale: +form.percentuale || 0,
+        importoManuale: +form.importoManuale || 0,
+        obiettivo: +form.obiettivo,
+      } : a))
+      toast('Fondo aggiornato')
+    } else {
+      const nuovo = {
+        id: Date.now(),
+        nome: form.nome.trim(),
+        tipo: form.tipo,
+        percentuale: +form.percentuale || 0,
+        importoManuale: +form.importoManuale || 0,
+        accantonato: 0,
+        obiettivo: +form.obiettivo,
+      }
+      updateData('accantonamenti', [...accantonamenti, nuovo])
+      toast('Fondo creato')
     }
-    updateData('accantonamenti', [...accantonamenti, nuovo])
     setForm({ nome:'', tipo:TIPI_ACCANTONAMENTO[0], percentuale:'', importoManuale:'', obiettivo:'' })
-    setErrors({}); toast('Fondo creato')
-  }
-
-  const aggiorna = () => {
-    if (!validate()) return
-    updateData('accantonamenti', accantonamenti.map(a => a.id === editId ? {
-      ...a,
-      nome: form.nome.trim(),
-      tipo: form.tipo,
-      percentuale: +form.percentuale || 0,
-      importoManuale: +form.importoManuale || 0,
-      obiettivo: +form.obiettivo,
-    } : a))
-    setForm({ nome:'', tipo:TIPI_ACCANTONAMENTO[0], percentuale:'', importoManuale:'', obiettivo:'' })
-    setEditId(null); setErrors({}); toast('Fondo aggiornato')
+    setEditId(null); setErrors({})
   }
 
   const rimuovi = (id) => { if(!confirm('Eliminare questo fondo?')) return; updateData('accantonamenti', accantonamenti.filter(a => a.id !== id)); toast('Fondo eliminato') }
@@ -2442,15 +3263,15 @@ function AccantonamentiTab({ data, updateData }) {
         <div style={S.card}>
           <h2 style={{margin:'0 0 16px',fontSize:18,fontWeight:700,color:t.text}}><Fa icon='fa-solid fa-piggy-bank' style={{marginRight:6}} />Piano di Accantonamento</h2>
           <div style={{display:'flex',gap:mob?8:12,marginBottom:14,flexWrap:'wrap'}}>
-            <div style={{flex:1,minWidth:mob?100:140,background:'#EFF6FF',borderRadius:12,padding:mob?10:14,textAlign:'center'}}>
+            <div style={{flex:1,minWidth:mob?100:140,background:'#3B82F615',borderRadius:12,padding:mob?10:14,textAlign:'center'}}>
               <p style={{margin:'0 0 2px',fontSize:12,color:t.textSec}}>Totale accantonato</p>
               <p style={{margin:0,fontSize:mob?18:24,fontWeight:700,color:'#3B82F6'}}>€ {totAccantonato.toFixed(2)}</p>
             </div>
-            <div style={{flex:1,minWidth:mob?100:140,background:'#ECFDF5',borderRadius:12,padding:mob?10:14,textAlign:'center'}}>
+            <div style={{flex:1,minWidth:mob?100:140,background:'#10B98115',borderRadius:12,padding:mob?10:14,textAlign:'center'}}>
               <p style={{margin:'0 0 2px',fontSize:12,color:t.textSec}}>Obiettivo totale</p>
               <p style={{margin:0,fontSize:mob?18:24,fontWeight:700,color:'#10B981'}}>€ {totObiettivo.toFixed(2)}</p>
             </div>
-            <div style={{flex:1,minWidth:mob?100:140,background:'#FFFBEB',borderRadius:12,padding:mob?10:14,textAlign:'center'}}>
+            <div style={{flex:1,minWidth:mob?100:140,background:'#F59E0B15',borderRadius:12,padding:mob?10:14,textAlign:'center'}}>
               <p style={{margin:'0 0 2px',fontSize:12,color:t.textSec}}>Quota mensile</p>
               <p style={{margin:0,fontSize:mob?18:24,fontWeight:700,color:'#F59E0B'}}>€ {quotaMensile.toFixed(2)}</p>
             </div>
@@ -2505,13 +3326,13 @@ function AccantonamentiTab({ data, updateData }) {
                       </div>
                       <div style={{display:'flex',gap:4}}>
                         <motion.button whileTap={{scale:0.85}} onClick={() => setVersaId(versaId === a.id ? null : a.id)}
-                          style={{background:'#ECFDF5',border:'none',borderRadius:8,padding:'5px 10px',cursor:'pointer',fontSize:12,fontWeight:600,color:'#10B981'}}>
+                          style={{background:'#10B98115',border:'none',borderRadius:8,padding:'5px 10px',cursor:'pointer',fontSize:12,fontWeight:600,color:'#10B981'}}>
                           + Versa
                         </motion.button>
                         <motion.button whileTap={{scale:0.85}} onClick={() => startEdit(a)}
                           style={{background:t.tagBg,border:'none',borderRadius:8,padding:'5px 8px',cursor:'pointer',fontSize:12,color:t.textSec}}><Fa icon='fa-solid fa-pen' /></motion.button>
                         <motion.button whileTap={{scale:0.85}} onClick={() => rimuovi(a.id)}
-                          style={{background:'#FEF2F2',border:'none',borderRadius:8,padding:'5px 8px',cursor:'pointer',fontSize:12,color:'#EF4444'}}>×</motion.button>
+                          style={{background:'#EF444415',border:'none',borderRadius:8,padding:'5px 8px',cursor:'pointer',fontSize:12,color:'#EF4444'}}>×</motion.button>
                       </div>
                     </div>
 
@@ -2540,8 +3361,8 @@ function AccantonamentiTab({ data, updateData }) {
                         <motion.div initial={{height:0,opacity:0}} animate={{height:'auto',opacity:1}} exit={{height:0,opacity:0}}
                           style={{marginTop:10,overflow:'hidden'}}>
                           <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                            <input type="number" value={versaImporto} onChange={e => setVersaImporto(e.target.value)}
-                              placeholder="€ importo" style={{...S.inputFull,flex:1,padding:'8px 10px',fontSize:13}} 
+                            <Inp type="number" value={versaImporto} onChange={e => setVersaImporto(e.target.value)}
+                              placeholder="€ importo" style={{flex:1,padding:'8px 10px',fontSize:13}} 
                               onKeyDown={e => e.key === 'Enter' && versamento(a.id)} />
                             <motion.button whileTap={{scale:0.95}} onClick={() => versamento(a.id)}
                               style={{background:'#10B981',color:'white',border:'none',borderRadius:8,padding:'8px 14px',fontSize:12,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap'}}>Versa</motion.button>
@@ -2563,25 +3384,24 @@ function AccantonamentiTab({ data, updateData }) {
             {editId ? 'Modifica fondo' : '+ Nuovo fondo'}
           </h3>
           <FormField label="Nome del fondo" error={errors.nome}>
-            <input value={form.nome} onChange={e => setForm({...form, nome:e.target.value})}
-              placeholder="es. Vacanza estiva 2025" style={S.inputFull} />
+            <Inp value={form.nome} onChange={e => setForm({...form, nome:e.target.value})}
+              placeholder="es. Vacanza estiva 2025" />
           </FormField>
           <FormField label="Tipo">
-            <select value={form.tipo} onChange={e => setForm({...form, tipo:e.target.value})} style={S.inputFull}>
-              {TIPI_ACCANTONAMENTO.map(t => <option key={t}>{t}</option>)}
-            </select>
+            <Sel value={form.tipo} onChange={e => setForm({...form, tipo:e.target.value})} style={S.inputFull}
+              options={TIPI_ACCANTONAMENTO.map(t=>({value:t,label:t}))} />
           </FormField>
           <FormField label="Obiettivo (€)" error={errors.obiettivo}>
-            <input type="number" value={form.obiettivo} onChange={e => setForm({...form, obiettivo:e.target.value})}
-              placeholder="es. 3000" style={S.inputFull} />
+            <Inp type="number" value={form.obiettivo} onChange={e => setForm({...form, obiettivo:e.target.value})}
+              placeholder="es. 3000" />
           </FormField>
           <div style={{padding:10,background:t.rowBg,borderRadius:10,margin:'8px 0 12px'}}>
             <p style={{margin:'0 0 8px',fontSize:12,fontWeight:600,color:t.text}}>Modalità di accantonamento</p>
             <p style={{margin:'0 0 6px',fontSize:11,color:t.textMut}}>Scegli % delle entrate oppure un importo fisso mensile</p>
             <FormField label={`% delle entrate${entrate > 0 ? ` (€ ${entrate.toFixed(0)})` : ''}`} error={errors.percentuale}>
               <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                <input type="number" value={form.percentuale} onChange={e => setForm({...form, percentuale:e.target.value, importoManuale:''})}
-                  placeholder="es. 10" min="0" max="100" step="0.5" style={{...S.inputFull,flex:1}} />
+                <Inp type="number" value={form.percentuale} onChange={e => setForm({...form, percentuale:e.target.value, importoManuale:''})}
+                  placeholder="es. 10" min="0" max="100" step="0.5" style={{flex:1}} />
                 <span style={{color:t.textSec,fontSize:14}}>%</span>
               </div>
               {form.percentuale && entrate > 0 && (
@@ -2591,8 +3411,8 @@ function AccantonamentiTab({ data, updateData }) {
             <div style={{textAlign:'center',fontSize:11,color:t.textMut,margin:'4px 0'}}>oppure</div>
             <FormField label="Importo fisso mensile (€)" error={errors.importoManuale}>
               <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                <input type="number" value={form.importoManuale} onChange={e => setForm({...form, importoManuale:e.target.value, percentuale:''})}
-                  placeholder="es. 200" style={{...S.inputFull,flex:1}} />
+                <Inp type="number" value={form.importoManuale} onChange={e => setForm({...form, importoManuale:e.target.value, percentuale:''})}
+                  placeholder="es. 200" style={{flex:1}} />
                 <span style={{color:t.textSec,fontSize:14}}>€</span>
               </div>
             </FormField>
@@ -2601,7 +3421,7 @@ function AccantonamentiTab({ data, updateData }) {
             const quota = form.percentuale && entrate > 0 ? entrate * (+form.percentuale) / 100 : +form.importoManuale || 0
             const mesi = quota > 0 ? Math.ceil(+form.obiettivo / quota) : 0
             return quota > 0 ? (
-              <div style={{padding:8,background:'#EFF6FF',borderRadius:8,marginBottom:12}}>
+              <div style={{padding:8,background:'#3B82F615',borderRadius:8,marginBottom:12}}>
                 <p style={{margin:0,fontSize:12,color:'#3B82F6',fontWeight:500}}>
                   <Fa icon='fa-solid fa-chart-bar' style={{marginRight:4}} />Con € {quota.toFixed(2)}/mese raggiungerai € {(+form.obiettivo).toFixed(0)} in ~{mesi} mesi
                 </p>
@@ -2609,7 +3429,7 @@ function AccantonamentiTab({ data, updateData }) {
             ) : null
           })()}
           <div style={{display:'flex',gap:8}}>
-            <motion.button whileTap={{scale:0.97}} onClick={editId ? aggiorna : aggiungi}
+            <motion.button whileTap={{scale:0.97}} onClick={aggiungi}
               style={{...S.btn('#3B82F6'),flex:1}}>{editId ? 'Aggiorna' : 'Crea fondo'}</motion.button>
             {editId && (
               <motion.button whileTap={{scale:0.97}} onClick={cancelEdit}
@@ -2619,7 +3439,7 @@ function AccantonamentiTab({ data, updateData }) {
         </div>
 
         {entrate <= 0 && (
-          <div style={{...S.card,background:'#FFFBEB',border:'1px solid #FDE68A'}}>
+          <div style={{...S.card,background:'#F59E0B15',border:`1px solid ${t.border}`}}>
             <p style={{margin:0,fontSize:13,color:'#D97706'}}>
               <Fa icon='fa-solid fa-triangle-exclamation' /> Registra lo <strong>stipendio</strong> nel tab Stipendio per calcolare le percentuali di accantonamento
             </p>
@@ -2657,10 +3477,12 @@ function AccantonamentiTab({ data, updateData }) {
 
 // ── IMPOSTAZIONI (categorie, backup, ecc.) ────────────────────────────────────
 function ImpostazioniTab({ data, updateData, onResetSetup }) {
-  const t = useT(); const S = makeS(t)
+  const t = useT(); const S = makeS(t); const toast = useToast()
   const w = useWindowWidth(); const mob = w < 768
   const [nuovaCatSpese, setNuovaCatSpese]       = useState('')
   const [nuovaCatScadenze, setNuovaCatScadenze] = useState('')
+  const [nuovoConto, setNuovoConto]             = useState('')
+  const [budgetCatEdit, setBudgetCatEdit]       = useState({})
 
   const aggiungiCatSpese = () => {
     if (!nuovaCatSpese.trim() || data.categorieSpese.includes(nuovaCatSpese.trim())) return
@@ -2702,7 +3524,7 @@ function ImpostazioniTab({ data, updateData, onResetSetup }) {
           ))}
         </div>
         <div style={{display:'flex',gap:8}}>
-          <input value={nuovaCatSpese} onChange={e=>setNuovaCatSpese(e.target.value)} placeholder="Nuova categoria..." style={{...S.inputFull,flex:1}} onKeyDown={e=>e.key==='Enter'&&aggiungiCatSpese()} />
+          <Inp value={nuovaCatSpese} onChange={e=>setNuovaCatSpese(e.target.value)} placeholder="Nuova categoria..." style={{flex:1}} onKeyDown={e=>e.key==='Enter'&&aggiungiCatSpese()} />
           <motion.button whileTap={{scale:0.95}} onClick={aggiungiCatSpese} style={{padding:'8px 16px',background:'#3B82F6',color:'white',border:'none',borderRadius:8,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>+ Aggiungi</motion.button>
         </div>
       </div>
@@ -2720,8 +3542,52 @@ function ImpostazioniTab({ data, updateData, onResetSetup }) {
           ))}
         </div>
         <div style={{display:'flex',gap:8}}>
-          <input value={nuovaCatScadenze} onChange={e=>setNuovaCatScadenze(e.target.value)} placeholder="Nuova categoria..." style={{...S.inputFull,flex:1}} onKeyDown={e=>e.key==='Enter'&&aggiungiCatScadenze()} />
+          <Inp value={nuovaCatScadenze} onChange={e=>setNuovaCatScadenze(e.target.value)} placeholder="Nuova categoria..." style={{flex:1}} onKeyDown={e=>e.key==='Enter'&&aggiungiCatScadenze()} />
           <motion.button whileTap={{scale:0.95}} onClick={aggiungiCatScadenze} style={{padding:'8px 16px',background:'#F59E0B',color:'white',border:'none',borderRadius:8,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>+ Aggiungi</motion.button>
+        </div>
+      </div>
+
+      <div style={{...S.card,marginBottom:16}}>
+        <h3 style={{margin:'0 0 12px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-building-columns' style={{marginRight:6}} />Conti</h3>
+        <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:10}}>
+          {(data.conti||[]).map(c=>(
+            <div key={c.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 12px',background:t.rowBg,borderRadius:10}}>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <Fa icon='fa-solid fa-wallet' style={{color:'#3B82F6'}} />
+                <span style={{fontSize:14,fontWeight:500,color:t.text}}>{c.nome}</span>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <Inp type="number" defaultValue={c.saldo} onBlur={e=>updateData('conti',(data.conti||[]).map(x=>x.id===c.id?{...x,saldo:+e.target.value||0}:x))}
+                  style={{width:100,textAlign:'right',fontSize:13}} placeholder="Saldo" />
+                <span style={{fontSize:12,color:t.textMut}}>€</span>
+                {(data.conti||[]).length>1 && <button onClick={()=>{updateData('conti',(data.conti||[]).filter(x=>x.id!==c.id));toast('Conto rimosso')}} style={{background:'none',border:'none',cursor:'pointer',color:'#EF4444',fontSize:16,padding:0}}>×</button>}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <Inp value={nuovoConto} onChange={e=>setNuovoConto(e.target.value)} placeholder="Nuovo conto..." style={{flex:1}} onKeyDown={e=>{if(e.key==='Enter'&&nuovoConto.trim()){updateData('conti',[...(data.conti||[]),{id:Date.now(),nome:nuovoConto.trim(),saldo:0}]);setNuovoConto('');toast('Conto aggiunto')}}} />
+          <motion.button whileTap={{scale:0.95}} onClick={()=>{if(!nuovoConto.trim())return;updateData('conti',[...(data.conti||[]),{id:Date.now(),nome:nuovoConto.trim(),saldo:0}]);setNuovoConto('');toast('Conto aggiunto')}} style={{padding:'8px 16px',background:'#3B82F6',color:'white',border:'none',borderRadius:8,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>+ Aggiungi</motion.button>
+        </div>
+      </div>
+
+      <div style={{...S.card,marginBottom:16}}>
+        <h3 style={{margin:'0 0 12px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-chart-pie' style={{marginRight:6}} />Budget per categoria</h3>
+        <p style={{margin:'0 0 10px',fontSize:12,color:t.textSec}}>Imposta un limite di spesa mensile per ogni categoria</p>
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          {data.categorieSpese.map(cat=>{
+            const bc = data.budgetCategorie||{}
+            return (
+              <div key={cat} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',background:t.rowBg,borderRadius:8}}>
+                <div style={{width:8,height:8,borderRadius:'50%',background:catCol(cat),flexShrink:0}} />
+                <span style={{flex:1,fontSize:13,color:t.text}}>{cat}</span>
+                <Inp type="number" defaultValue={bc[cat]||''} placeholder="—"
+                  onBlur={e=>{const v=+e.target.value||0;const nb={...(data.budgetCategorie||{})};if(v>0)nb[cat]=v;else delete nb[cat];updateData('budgetCategorie',nb)}}
+                  style={{width:80,textAlign:'right',fontSize:13}} />
+                <span style={{fontSize:12,color:t.textMut}}>€</span>
+              </div>
+            )
+          })}
         </div>
       </div>
 
@@ -2729,8 +3595,8 @@ function ImpostazioniTab({ data, updateData, onResetSetup }) {
         <h3 style={{margin:'0 0 12px',fontSize:15,fontWeight:600,color:t.text}}>Backup automatico</h3>
         <p style={{margin:'0 0 8px',fontSize:13,color:t.textSec}}>Esporta automaticamente il JSON ogni N minuti (0 = disabilitato)</p>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          <input type="number" defaultValue={data.backupIntervallo} onBlur={e=>updateData('backupIntervallo',Math.max(0,+e.target.value||0))}
-            style={{...S.inputFull,flex:1}} min="0" step="5" />
+          <Inp type="number" defaultValue={data.backupIntervallo} onBlur={e=>updateData('backupIntervallo',Math.max(0,+e.target.value||0))}
+            style={{flex:1}} min="0" step="5" />
           <span style={{color:t.textSec,fontSize:14}}>min</span>
         </div>
         {data.ultimoBackup && <p style={{margin:'8px 0 0',fontSize:11,color:t.textMut}}>Ultimo backup: {new Date(data.ultimoBackup).toLocaleString('it-IT')}</p>}
@@ -2857,11 +3723,8 @@ function SetupWizard({ onComplete }) {
                   <Fa icon="fa-solid fa-circle-info" style={{ color: '#3B82F6', fontSize: 18 }} />
                   <span style={{ fontSize: 13, color: theme.textSec, lineHeight: 1.4 }}>Potrai modificare tutto anche dopo dalle Impostazioni</span>
                 </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginTop: 4 }}>
-                  <input type="checkbox" checked={darkMode} onChange={e => setDarkMode(e.target.checked)}
-                    style={{ width: 18, height: 18, accentColor: '#3B82F6' }} />
-                  <span style={{ fontSize: 14, color: theme.text }}><Fa icon="fa-solid fa-moon" style={{ marginRight: 6 }} />Modalit&agrave; scura</span>
-                </label>
+                <Chk checked={darkMode} onChange={e => setDarkMode(e.target.checked)}
+                  label={<><Fa icon="fa-solid fa-moon" style={{ marginRight: 6 }} />Modalit&agrave; scura</>} />
               </div>
             )}
 
@@ -2879,8 +3742,8 @@ function SetupWizard({ onComplete }) {
                         {(m || '?')[0].toUpperCase()}
                       </div>
                       {i === 0 ? (
-                        <input value={m} onChange={e => setMembri(prev => { const a = [...prev]; a[0] = e.target.value; return a })}
-                          placeholder="Il tuo nome..." style={{ ...s.inputFull, flex: 1 }} />
+                        <Inp value={m} onChange={e => setMembri(prev => { const a = [...prev]; a[0] = e.target.value; return a })}
+                          placeholder="Il tuo nome..." style={{ flex: 1 }} />
                       ) : (
                         <>
                           <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: theme.text }}>{m}</span>
@@ -2893,8 +3756,8 @@ function SetupWizard({ onComplete }) {
                   ))}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <input value={nuovoM} onChange={e => setNuovoM(e.target.value)} placeholder="Aggiungi membro..."
-                    style={{ ...s.inputFull, flex: 1 }} onKeyDown={e => e.key === 'Enter' && addMembro()} />
+                  <Inp value={nuovoM} onChange={e => setNuovoM(e.target.value)} placeholder="Aggiungi membro..."
+                    style={{ flex: 1 }} onKeyDown={e => e.key === 'Enter' && addMembro()} />
                   <motion.button whileTap={{ scale: 0.95 }} onClick={addMembro}
                     style={{ padding: '8px 16px', background: '#3B82F6', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                     <Fa icon="fa-solid fa-plus" />
@@ -2913,24 +3776,24 @@ function SetupWizard({ onComplete }) {
                 <div>
                   <label style={lbl}><Fa icon="fa-solid fa-money-bill-wave" style={{ marginRight: 6 }} />Stipendio mensile netto</label>
                   <div style={{ position: 'relative' }}>
-                    <input type="number" value={stipendio} onChange={e => setStipendio(e.target.value)} placeholder="es. 1800"
-                      style={{ ...s.inputFull, paddingRight: 30 }} />
+                    <Inp type="number" value={stipendio} onChange={e => setStipendio(e.target.value)} placeholder="es. 1800"
+                      style={{ paddingRight: 30 }} />
                     <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: theme.textMut, fontSize: 14 }}>&euro;</span>
                   </div>
                 </div>
                 <div>
                   <label style={lbl}><Fa icon="fa-solid fa-chart-pie" style={{ marginRight: 6 }} />Budget mensile spese</label>
                   <div style={{ position: 'relative' }}>
-                    <input type="number" value={budget} onChange={e => setBudget(e.target.value)} placeholder="es. 1200"
-                      style={{ ...s.inputFull, paddingRight: 30 }} />
+                    <Inp type="number" value={budget} onChange={e => setBudget(e.target.value)} placeholder="es. 1200"
+                      style={{ paddingRight: 30 }} />
                     <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: theme.textMut, fontSize: 14 }}>&euro;</span>
                   </div>
                 </div>
                 <div>
                   <label style={lbl}><Fa icon="fa-solid fa-piggy-bank" style={{ marginRight: 6 }} />Obiettivo risparmio mensile</label>
                   <div style={{ position: 'relative' }}>
-                    <input type="number" value={goalRisparmio} onChange={e => setGoalRisparmio(e.target.value)} placeholder="es. 300"
-                      style={{ ...s.inputFull, paddingRight: 30 }} />
+                    <Inp type="number" value={goalRisparmio} onChange={e => setGoalRisparmio(e.target.value)} placeholder="es. 300"
+                      style={{ paddingRight: 30 }} />
                     <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: theme.textMut, fontSize: 14 }}>&euro;</span>
                   </div>
                 </div>
@@ -2962,8 +3825,8 @@ function SetupWizard({ onComplete }) {
                     ))}
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <input value={nuovaCatS} onChange={e => setNuovaCatS(e.target.value)} placeholder="Nuova categoria..."
-                      style={{ ...s.inputFull, flex: 1, fontSize: 12 }} onKeyDown={e => e.key === 'Enter' && addCatS()} />
+                    <Inp value={nuovaCatS} onChange={e => setNuovaCatS(e.target.value)} placeholder="Nuova categoria..."
+                      style={{ flex: 1, fontSize: 12 }} onKeyDown={e => e.key === 'Enter' && addCatS()} />
                     <button onClick={addCatS} style={{ padding: '5px 12px', background: '#3B82F6', color: 'white', border: 'none', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}><Fa icon="fa-solid fa-plus" /></button>
                   </div>
                 </div>
@@ -2979,8 +3842,8 @@ function SetupWizard({ onComplete }) {
                     ))}
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <input value={nuovaCatSc} onChange={e => setNuovaCatSc(e.target.value)} placeholder="Nuova categoria..."
-                      style={{ ...s.inputFull, flex: 1, fontSize: 12 }} onKeyDown={e => e.key === 'Enter' && addCatSc()} />
+                    <Inp value={nuovaCatSc} onChange={e => setNuovaCatSc(e.target.value)} placeholder="Nuova categoria..."
+                      style={{ flex: 1, fontSize: 12 }} onKeyDown={e => e.key === 'Enter' && addCatSc()} />
                     <button onClick={addCatSc} style={{ padding: '5px 12px', background: '#3B82F6', color: 'white', border: 'none', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}><Fa icon="fa-solid fa-plus" /></button>
                   </div>
                 </div>
@@ -2995,29 +3858,21 @@ function SetupWizard({ onComplete }) {
                   <p style={{ margin: '6px 0 0', fontSize: 13, color: theme.textSec }}>Aggiungi bollette, assicurazioni e scadenze ricorrenti</p>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <input value={scNome} onChange={e => setScNome(e.target.value)} placeholder="Nome scadenza (es. Affitto, Bolletta luce...)"
+                  <Inp value={scNome} onChange={e => setScNome(e.target.value)} placeholder="Nome scadenza (es. Affitto, Bolletta luce...)"
                     style={s.inputFull} />
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <input type="date" value={scData} onChange={e => setScData(e.target.value)} style={{ ...s.input, flex: 1 }} />
-                    <select value={scCat} onChange={e => setScCat(e.target.value)} style={{ ...s.input, flex: 1 }}>
-                      <option value="">Categoria</option>
-                      {catScadenze.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                    <DatePick value={scData} onChange={e => setScData(e.target.value)} style={{ ...s.input, flex: 1 }} />
+                    <Sel value={scCat} onChange={e => setScCat(e.target.value)} style={{ ...s.input, flex: 1 }}
+                      options={[{value:'',label:'Categoria'},...catScadenze.map(c=>({value:c,label:c}))]} />
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <div style={{ position: 'relative', flex: 1 }}>
-                      <input type="number" value={scImporto} onChange={e => setScImporto(e.target.value)} placeholder="Importo stimato"
-                        style={{ ...s.inputFull, paddingRight: 24 }} />
+                      <Inp type="number" value={scImporto} onChange={e => setScImporto(e.target.value)} placeholder="Importo stimato"
+                        style={{ paddingRight: 24 }} />
                       <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: theme.textMut, fontSize: 13 }}>&euro;</span>
                     </div>
-                    <select value={scRipetizione} onChange={e => setScRipetizione(e.target.value)} style={{ ...s.input, flex: 1 }}>
-                      <option value="nessuna">Non ricorrente</option>
-                      <option value="mensile">Mensile</option>
-                      <option value="bimestrale">Bimestrale</option>
-                      <option value="trimestrale">Trimestrale</option>
-                      <option value="semestrale">Semestrale</option>
-                      <option value="annuale">Annuale</option>
-                    </select>
+                    <Sel value={scRipetizione} onChange={e => setScRipetizione(e.target.value)} style={{ ...s.input, flex: 1 }}
+                      options={[{value:'nessuna',label:'Non ricorrente'},{value:'mensile',label:'Mensile'},{value:'bimestrale',label:'Bimestrale'},{value:'trimestrale',label:'Trimestrale'},{value:'semestrale',label:'Semestrale'},{value:'annuale',label:'Annuale'}]} />
                   </div>
                   <motion.button whileTap={{ scale: 0.96 }} onClick={addScadenza}
                     style={{ padding: '10px', background: '#3B82F6', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
@@ -3121,6 +3976,8 @@ export default function DashboardCasa() {
   const importRef       = useRef(null)
   const [showMembri, setShowMembri] = useState(false)
   const [nuovoMembro, setNuovoMembro] = useState('')
+  const [editMembro, setEditMembro] = useState(null)
+  const [editMembroNome, setEditMembroNome] = useState('')
   const [toasts, setToasts] = useState([])
   const [showSearch, setShowSearch] = useState(false)
   const [searchQ, setSearchQ] = useState('')
@@ -3234,14 +4091,41 @@ export default function DashboardCasa() {
     const checkNotif = () => {
       if (!('Notification' in window) || Notification.permission !== 'granted') return
       const now = new Date()
+      // Scadenze imminenti
       data.scadenze.filter(s => !s.gestita).forEach(s => {
         const gg = Math.ceil((new Date(s.data) - now) / 864e5)
-        const key = `${s.id}-${s.data}`
+        const key = `scad-${s.id}-${s.data}`
         if (gg >= 0 && gg <= 3 && !notifiedRef.current.has(key)) {
           notifiedRef.current.add(key)
           new Notification('Scadenza imminente', {
-            body: `${s.nome} scade ${gg === 0 ? 'oggi' : `tra ${gg} giorn${gg === 1 ? 'o' : 'i'}`}`,
+            body: `${s.nome} scade ${gg === 0 ? 'oggi' : `tra ${gg} giorn${gg === 1 ? 'o' : 'i'}`}${s.importoStimato ? ` (€ ${s.importoStimato})` : ''}`,
           })
+        }
+      })
+      // Budget al 90%
+      const meseCorr = mc()
+      const speseMese = totMese(data.spese, meseCorr)
+      const budgetKey = `budget-${meseCorr}`
+      if (speseMese >= data.budget * 0.9 && !notifiedRef.current.has(budgetKey)) {
+        notifiedRef.current.add(budgetKey)
+        new Notification('Budget quasi esaurito', { body: `Hai speso € ${speseMese.toFixed(0)} su € ${data.budget} (${(speseMese/data.budget*100).toFixed(0)}%)` })
+      }
+      // Budget per categoria
+      Object.entries(data.budgetCategorie||{}).forEach(([cat, lim]) => {
+        const spCat = data.spese.filter(s=>s.data?.startsWith(meseCorr)&&s.categoria===cat).reduce((s,x)=>s+ +x.importo,0)
+        const catKey = `budcat-${cat}-${meseCorr}`
+        if (spCat >= lim * 0.9 && !notifiedRef.current.has(catKey)) {
+          notifiedRef.current.add(catKey)
+          new Notification(`Budget ${cat} al ${(spCat/lim*100).toFixed(0)}%`, { body: `€ ${spCat.toFixed(0)} / € ${lim}` })
+        }
+      })
+      // Garanzie in scadenza (30 giorni)
+      data.inventario.filter(x=>x.scadenzaGaranzia).forEach(x=>{
+        const gg=Math.ceil((new Date(x.scadenzaGaranzia)-now)/864e5)
+        const gKey=`gar-${x.id}`
+        if(gg>=0&&gg<=30&&!notifiedRef.current.has(gKey)){
+          notifiedRef.current.add(gKey)
+          new Notification('Garanzia in scadenza',{body:`${x.nome}: garanzia scade tra ${gg} giorn${gg===1?'o':'i'}`})
         }
       })
     }
@@ -3297,6 +4181,16 @@ export default function DashboardCasa() {
     setNuovoMembro('')
   }
   const rimuoviMembro = (m) => updateData('membrifamiglia', data.membrifamiglia.filter(x=>x!==m))
+  const rinominaMembro = () => {
+    const vecchio = editMembro, nuovo = editMembroNome.trim()
+    if (!nuovo || nuovo === vecchio) { setEditMembro(null); return }
+    if (data.membrifamiglia.includes(nuovo)) { toast('Nome già esistente','error'); return }
+    updateData('membrifamiglia', data.membrifamiglia.map(m=>m===vecchio?nuovo:m))
+    updateData('spese', data.spese.map(s=>s.pagatoDa===vecchio?{...s,pagatoDa:nuovo}:s))
+    updateData('attivita', data.attivita.map(a=>a.assegnato===vecchio?{...a,assegnato:nuovo}:a))
+    setEditMembro(null)
+    toast('Membro rinominato')
+  }
 
   const theme = data.darkMode ? THEMES.dark : THEMES.light
   const S     = makeS(theme)
@@ -3355,7 +4249,7 @@ export default function DashboardCasa() {
       `}</style>
       <div style={{minHeight:'100vh',background:theme.bg,fontFamily:'system-ui,-apple-system,sans-serif',color:theme.text}}>
         {/* HEADER */}
-        <header style={{background:theme.headerBg,borderBottom:`1px solid ${theme.border}`,padding:mob?'8px 12px':'13px 24px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+        <header style={{background:theme.headerBg,borderBottom:`1px solid ${theme.border}`,padding:mob?'8px 12px':'13px 24px',paddingTop:mob?'calc(env(safe-area-inset-top, 0px) + 8px)':'calc(env(safe-area-inset-top, 0px) + 13px)',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
           <div style={{display:'flex',alignItems:'center',gap:mob?8:12,minWidth:0}}>
             <motion.span animate={{rotate:[0,12,-6,0]}} transition={{delay:0.8,duration:0.55,ease:'easeInOut'}}
               style={{fontSize:mob?20:28,display:'inline-block',flexShrink:0,color:theme.text}}><Fa icon='fa-solid fa-house' /></motion.span>
@@ -3388,7 +4282,7 @@ export default function DashboardCasa() {
             {!mob && <>
               {data.membrifamiglia.map(m=>(
                 <motion.div key={m} whileHover={{scale:1.12}} title={m} onClick={()=>setShowMembri(true)}
-                  style={{width:32,height:32,borderRadius:'50%',background:'#EFF6FF',border:'2px solid #DBEAFE',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'#3B82F6',cursor:'pointer'}}>
+                  style={{width:32,height:32,borderRadius:'50%',background:'#3B82F615',border:`2px solid ${theme.border}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'#3B82F6',cursor:'pointer'}}>
                   {m[0].toUpperCase()}
                 </motion.div>
               ))}
@@ -3431,6 +4325,8 @@ export default function DashboardCasa() {
                 style={{padding:'6px 10px',background:theme.tagBg,border:'none',borderRadius:8,cursor:'pointer',fontSize:12,color:theme.textSec,fontWeight:500}}><Fa icon='fa-solid fa-file-csv' style={{marginRight:4}} />CSV</motion.button>
               <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}} onClick={()=>exportReport(data)}
                 style={{padding:'6px 10px',background:theme.tagBg,border:'none',borderRadius:8,cursor:'pointer',fontSize:12,color:theme.textSec,fontWeight:500}}><Fa icon='fa-solid fa-file-lines' style={{marginRight:4}} />Report</motion.button>
+              <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}} onClick={()=>generaReportPDF(data)}
+                style={{padding:'6px 10px',background:'#EF444420',border:'none',borderRadius:8,cursor:'pointer',fontSize:12,color:'#EF4444',fontWeight:600}}><Fa icon='fa-solid fa-file-pdf' style={{marginRight:4}} />PDF</motion.button>
               <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}} onClick={()=>importRef.current?.click()}
                 style={{padding:'6px 10px',background:theme.tagBg,border:'none',borderRadius:8,cursor:'pointer',fontSize:12,color:theme.textSec,fontWeight:500}}><Fa icon='fa-solid fa-upload' style={{marginRight:4}} />Import</motion.button>
               <input ref={importRef} type="file" accept=".json" onChange={importJSON} style={{display:'none'}} />
@@ -3456,10 +4352,10 @@ export default function DashboardCasa() {
         </nav>}
 
         {/* CONTENT */}
-        <main style={{width:'100%',margin:0,padding:mob?'12px 10px 80px':'24px 24px'}}>
+        <main style={{width:'100%',margin:0,padding:mob?'12px 10px 80px':'24px 24px',paddingBottom:mob?'calc(env(safe-area-inset-bottom, 0px) + 80px)':'24px'}}>
           <AnimatePresence mode="wait">
             <motion.div key={tab} variants={TAB_V} initial="initial" animate="animate" exit="exit">
-              {tab==='home'        && <HomeTab       data={data} setTab={setTab} />}
+              {tab==='home'        && <HomeTab       data={data} setTab={setTab} updateData={updateData} />}
               {tab==='spese'       && <SpeseTab      data={data} updateData={updateData} />}
               {tab==='stipendio'   && <StipendioTab  data={data} updateData={updateData} />}
               {tab==='scadenze'    && <ScadenzeTab   data={data} updateData={updateData} />}
@@ -3483,20 +4379,37 @@ export default function DashboardCasa() {
               <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:16}}>
                 {data.membrifamiglia.map(m=>(
                   <div key={m} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 12px',background:theme.rowBg,borderRadius:10}}>
-                    <div style={{display:'flex',alignItems:'center',gap:10}}>
-                      <div style={{width:36,height:36,borderRadius:'50%',background:'#EFF6FF',border:'2px solid #DBEAFE',display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,fontWeight:700,color:'#3B82F6'}}>
-                        {m[0].toUpperCase()}
+                    <div style={{display:'flex',alignItems:'center',gap:10,flex:1,minWidth:0}}>
+                      <div style={{width:36,height:36,borderRadius:'50%',background:'#3B82F615',border:`2px solid ${theme.border}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,fontWeight:700,color:'#3B82F6',flexShrink:0}}>
+                        {(editMembro===m?editMembroNome||m:m)[0].toUpperCase()}
                       </div>
-                      <span style={{fontSize:15,fontWeight:500,color:theme.text}}>{m}</span>
+                      {editMembro===m ? (
+                        <Inp autoFocus value={editMembroNome} onChange={e=>setEditMembroNome(e.target.value)}
+                          onKeyDown={e=>{if(e.key==='Enter')rinominaMembro();if(e.key==='Escape')setEditMembro(null)}}
+                          style={{flex:1,minWidth:0}} />
+                      ) : (
+                        <span style={{fontSize:15,fontWeight:500,color:theme.text}}>{m}</span>
+                      )}
                     </div>
-                    <motion.button whileTap={{scale:0.85}} onClick={()=>rimuoviMembro(m)}
-                      style={{background:'none',border:'none',cursor:'pointer',color:'#EF4444',fontSize:18}}>×</motion.button>
+                    <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+                      {editMembro===m ? (<>
+                        <motion.button whileTap={{scale:0.85}} onClick={rinominaMembro}
+                          style={{background:'none',border:'none',cursor:'pointer',color:'#10B981',fontSize:16,padding:4}}><Fa icon='fa-solid fa-check' /></motion.button>
+                        <motion.button whileTap={{scale:0.85}} onClick={()=>setEditMembro(null)}
+                          style={{background:'none',border:'none',cursor:'pointer',color:theme.textMut,fontSize:16,padding:4}}><Fa icon='fa-solid fa-xmark' /></motion.button>
+                      </>) : (<>
+                        <motion.button whileTap={{scale:0.85}} onClick={()=>{setEditMembro(m);setEditMembroNome(m)}}
+                          style={{background:'none',border:'none',cursor:'pointer',color:'#3B82F6',fontSize:14,padding:4}}><Fa icon='fa-solid fa-pen' /></motion.button>
+                        <motion.button whileTap={{scale:0.85}} onClick={()=>rimuoviMembro(m)}
+                          style={{background:'none',border:'none',cursor:'pointer',color:'#EF4444',fontSize:18,padding:4}}>×</motion.button>
+                      </>)}
+                    </div>
                   </div>
                 ))}
               </div>
               <div style={{display:'flex',gap:8}}>
-                <input value={nuovoMembro} onChange={e=>setNuovoMembro(e.target.value)} placeholder="Nuovo membro..."
-                  style={{...makeS(theme).inputFull,flex:1}} onKeyDown={e=>e.key==='Enter'&&aggiungiMembro()} />
+                <Inp value={nuovoMembro} onChange={e=>setNuovoMembro(e.target.value)} placeholder="Nuovo membro..."
+                  style={{flex:1}} onKeyDown={e=>e.key==='Enter'&&aggiungiMembro()} />
                 <motion.button whileTap={{scale:0.95}} onClick={aggiungiMembro}
                   style={{padding:'8px 16px',background:'#3B82F6',color:'white',border:'none',borderRadius:8,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>+ Aggiungi</motion.button>
               </div>
@@ -3516,8 +4429,8 @@ export default function DashboardCasa() {
               onClick={e=>e.stopPropagation()}>
               <div style={{padding:'16px 20px',borderBottom:`1px solid ${theme.border}`,display:'flex',alignItems:'center',gap:10}}>
                 <span style={{fontSize:18,color:theme.textMut}}><Fa icon='fa-solid fa-magnifying-glass' /></span>
-                <input autoFocus value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Cerca ovunque... (spese, scadenze, note, contatti...)"
-                  style={{flex:1,border:'none',outline:'none',fontSize:15,background:'transparent',color:theme.text}} />
+                <Inp autoFocus value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Cerca ovunque... (spese, scadenze, note, contatti...)"
+                  style={{flex:1,border:'none',background:'transparent',fontSize:15,boxShadow:'none'}} />
                 <kbd style={{padding:'2px 8px',borderRadius:6,background:theme.tagBg,fontSize:11,color:theme.textMut,border:`1px solid ${theme.border}`}}>ESC</kbd>
               </div>
               <div style={{overflow:'auto',padding:'12px 20px',flex:1}}>
@@ -3560,7 +4473,7 @@ export default function DashboardCasa() {
       {mob && (
         <nav style={{position:'fixed',bottom:0,left:0,right:0,background:theme.headerBg,borderTop:`1px solid ${theme.border}`,
           display:'flex',justifyContent:'space-around',alignItems:'stretch',zIndex:900,
-          paddingBottom:'env(safe-area-inset-bottom,0)',boxShadow:'0 -2px 12px rgba(0,0,0,0.08)'}}>
+          paddingBottom:'env(safe-area-inset-bottom, 0px)',boxShadow:'0 -2px 12px rgba(0,0,0,0.08)'}}>
           {bottomTabs.map(bt=>{
             const active = tab===bt.id
             const tb = tabs.find(t=>t.id===bt.id)
