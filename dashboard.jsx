@@ -7,6 +7,7 @@
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react'
 import { motion, AnimatePresence, Reorder } from 'framer-motion'
 import { createClient } from '@supabase/supabase-js'
+import { NativeBiometric, BiometryType } from 'capacitor-native-biometric'
 
 // ── SUPABASE ───────────────────────────────────────────────────────────────────
 const supabase = createClient(
@@ -4457,6 +4458,8 @@ function PinLockScreen({ onUnlock }) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState(false)
   const [shake, setShake] = useState(false)
+  const [bioAvailable, setBioAvailable] = useState(false)
+  const [bioType, setBioType] = useState(null) // 'face' | 'finger' | 'iris'
 
   const addDigit = (d) => {
     if (pin.length >= 4) return
@@ -4472,6 +4475,44 @@ function PinLockScreen({ onUnlock }) {
 
   // Expose triggerError via ref-like callback
   useEffect(() => { window.__pinError = triggerError; return () => { delete window.__pinError } })
+
+  // Check biometric availability
+  useEffect(() => {
+    const checkBio = async () => {
+      try {
+        const result = await NativeBiometric.isAvailable()
+        if (result.isAvailable) {
+          setBioAvailable(true)
+          // BiometryType: 1=TOUCH_ID, 2=FACE_ID, 3=FINGERPRINT, 4=FACE_AUTHENTICATION, 5=IRIS_AUTHENTICATION
+          if (result.biometryType === BiometryType.FACE_ID || result.biometryType === BiometryType.FACE_AUTHENTICATION) {
+            setBioType('face')
+          } else if (result.biometryType === BiometryType.IRIS_AUTHENTICATION) {
+            setBioType('iris')
+          } else {
+            setBioType('finger')
+          }
+          // Auto-prompt biometric on mount
+          tryBiometric()
+        }
+      } catch { /* biometrics not available (web) */ }
+    }
+    checkBio()
+  }, [])
+
+  const tryBiometric = async () => {
+    try {
+      await NativeBiometric.verifyIdentity({
+        reason: 'Sblocca Casa Nostra',
+        title: 'Autenticazione',
+        subtitle: 'Usa Face ID o impronta per accedere',
+        description: '',
+      })
+      onUnlock('__biometric__')
+    } catch { /* user cancelled or failed */ }
+  }
+
+  const bioIcon = bioType === 'face' ? 'fa-regular fa-face-smile' : 'fa-solid fa-fingerprint'
+  const bioLabel = bioType === 'face' ? 'Usa Face ID' : bioType === 'iris' ? 'Usa riconoscimento iride' : 'Usa impronta digitale'
 
   return (
     <div style={{ minHeight: '100vh', background: '#0F172A', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: '-apple-system,sans-serif', padding: 20 }}>
@@ -4510,10 +4551,10 @@ function PinLockScreen({ onUnlock }) {
           })}
         </div>
 
-        {navigator.credentials && window.PublicKeyCredential && (
-          <motion.button whileTap={{ scale: 0.95 }} onClick={() => onUnlock('__biometric__')}
+        {bioAvailable && (
+          <motion.button whileTap={{ scale: 0.95 }} onClick={tryBiometric}
             style={{ marginTop: 24, padding: '12px 24px', background: '#1E293B', border: '1px solid #334155', borderRadius: 12, cursor: 'pointer', color: '#94A3B8', fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8, margin: '24px auto 0' }}>
-            <Fa icon="fa-solid fa-fingerprint" style={{ fontSize: 20, color: '#3B82F6' }} /> Usa biometria
+            <Fa icon={bioIcon} style={{ fontSize: 20, color: '#3B82F6' }} /> {bioLabel}
           </motion.button>
         )}
       </motion.div>
