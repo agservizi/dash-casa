@@ -4599,10 +4599,12 @@ function SetupWizard({ onComplete }) {
   const [scImporto, setScImporto] = useState('')
   const [scRipetizione, setScRipetizione] = useState('nessuna')
   const [darkMode, setDarkMode] = useState(false)
+  const [pinCode, setPinCode] = useState(['','','',''])
+  const [pinEnabled, setPinEnabled] = useState(false)
 
   const theme = darkMode ? THEMES.dark : THEMES.light
   const s = makeS(theme)
-  const STEPS = ['Benvenuto','Famiglia','Finanze','Categorie','Scadenze','Fatto']
+  const STEPS = ['Benvenuto','Famiglia','Finanze','Categorie','Scadenze','Sicurezza','Fatto']
 
   const addMembro = () => {
     const n = nuovoM.trim()
@@ -4644,6 +4646,7 @@ function SetupWizard({ onComplete }) {
       scadenze,
       darkMode,
       stipendi: (+stipendio) ? [{ id: Date.now(), importo: +stipendio, mese, note: 'Setup iniziale', data: oggi }] : [],
+      pinLock: pinEnabled && pinCode.join('').length === 4 ? pinCode.join('') : '',
     }
     onComplete(realData)
   }
@@ -4867,8 +4870,64 @@ function SetupWizard({ onComplete }) {
               </div>
             )}
 
-            {/* STEP 5 — Riepilogo */}
+            {/* STEP 5 — Sicurezza */}
             {step === 5 && (
+              <div style={wrap}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: theme.text }}><Fa icon="fa-solid fa-shield-halved" style={{ marginRight: 8, color: '#8B5CF6' }} />Sicurezza</h3>
+                  <p style={{ margin: '6px 0 0', fontSize: 13, color: theme.textSec }}>Proteggi l'accesso all'app con un PIN di 4 cifre</p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, background: theme.tagBg, borderRadius: 12 }}>
+                  <div onClick={() => { setPinEnabled(!pinEnabled); if (pinEnabled) setPinCode(['','','','']) }}
+                    style={{ width: 48, height: 28, borderRadius: 14, background: pinEnabled ? '#3B82F6' : theme.border, position: 'relative', cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0 }}>
+                    <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'white', position: 'absolute', top: 3, left: pinEnabled ? 23 : 3, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>Blocco PIN</div>
+                    <div style={{ fontSize: 12, color: theme.textSec }}>Richiedi un PIN ogni volta che apri l'app</div>
+                  </div>
+                </div>
+                <AnimatePresence>
+                  {pinEnabled && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                      style={{ overflow: 'hidden' }}>
+                      <label style={{ ...lbl, marginBottom: 10 }}>Scegli il tuo PIN di 4 cifre</label>
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
+                        {[0,1,2,3].map(i => (
+                          <input key={i} id={`setup-pin-${i}`} type="password" inputMode="numeric" maxLength={1}
+                            value={pinCode[i]}
+                            style={{ width: 56, height: 56, textAlign: 'center', fontSize: 24, fontWeight: 700,
+                              border: `2px solid ${pinCode[i] ? '#3B82F6' : theme.inputBorder}`, borderRadius: 14,
+                              background: theme.inputBg, color: theme.text, outline: 'none', transition: 'border-color 0.2s' }}
+                            onFocus={e => e.target.select()}
+                            onChange={e => {
+                              const v = e.target.value.replace(/\D/g, '');
+                              const next = [...pinCode]; next[i] = v; setPinCode(next);
+                              if (v && i < 3) document.getElementById(`setup-pin-${i+1}`)?.focus();
+                            }}
+                            onKeyDown={e => { if (e.key === 'Backspace' && !pinCode[i] && i > 0) document.getElementById(`setup-pin-${i-1}`)?.focus() }}
+                          />
+                        ))}
+                      </div>
+                      {pinCode.join('').length === 4 && (
+                        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', marginTop: 12 }}>
+                          <Fa icon="fa-solid fa-circle-check" style={{ color: '#10B981' }} />
+                          <span style={{ fontSize: 13, fontWeight: 600, color: '#10B981' }}>PIN impostato</span>
+                        </motion.div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <div style={{ padding: 14, background: theme.tagBg, borderRadius: 12, fontSize: 13, color: theme.textMut, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                  <Fa icon="fa-solid fa-circle-info" style={{ color: '#3B82F6', marginTop: 2 }} />
+                  <span>Potrai sempre attivare, cambiare o disattivare il PIN dalle Impostazioni</span>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 6 — Riepilogo */}
+            {step === 6 && (
               <div style={wrap}>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: 48, marginBottom: 12 }}><Fa icon="fa-solid fa-circle-check" style={{ color: '#10B981' }} /></div>
@@ -4883,6 +4942,7 @@ function SetupWizard({ onComplete }) {
                     { icon: 'fa-solid fa-piggy-bank', label: 'Obiettivo risparmio', val: '\u20AC' + (+goalRisparmio || 500).toLocaleString('it-IT') + '/mese', color: '#8B5CF6' },
                     { icon: 'fa-solid fa-tags', label: 'Categorie spese', val: catSpese.length + ' categorie', color: '#EC4899' },
                     { icon: 'fa-solid fa-calendar-check', label: 'Scadenze', val: scadenze.length + ' scadenze impostate', color: '#EF4444' },
+                    { icon: 'fa-solid fa-shield-halved', label: 'Sicurezza', val: pinEnabled && pinCode.join('').length === 4 ? 'PIN attivo' : 'Nessun PIN', color: '#8B5CF6' },
                   ].map(r => (
                     <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: theme.rowBg, borderRadius: 10 }}>
                       <div style={{ width: 36, height: 36, borderRadius: 10, background: r.color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -4909,7 +4969,7 @@ function SetupWizard({ onComplete }) {
               <Fa icon="fa-solid fa-arrow-left" style={{ marginRight: 6 }} />Indietro
             </motion.button>
           ) : <div />}
-          {step < 5 ? (
+          {step < 6 ? (
             <motion.button whileTap={{ scale: 0.96 }} onClick={() => canNext() && setStep(step + 1)}
               style={{ padding: '10px 24px', background: canNext() ? '#3B82F6' : theme.border, color: canNext() ? 'white' : theme.textMut, border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: canNext() ? 'pointer' : 'default' }}>
               Avanti<Fa icon="fa-solid fa-arrow-right" style={{ marginLeft: 6 }} />
