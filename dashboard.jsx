@@ -337,6 +337,9 @@ const INITIAL = {
   categorieScadenze:[...CATEGORIE_SCADENZE_DEFAULT],
   goalRisparmio:500,
   darkMode:false,
+  darkModeAuto:'off', // 'off' | 'schedule' | 'sunrise'
+  darkModeStart:'20:00',
+  darkModeEnd:'07:00',
   backupIntervallo:0,
   ultimoBackup:null,
   listaSpesa:[],
@@ -378,6 +381,32 @@ const makeS = (t) => ({
 
 // ── FRAMER VARIANTS ────────────────────────────────────────────────────────────
 const TAB_V  = { initial:{opacity:0,y:14}, animate:{opacity:1,y:0,transition:{duration:0.22,ease:[0.25,0.46,0.45,0.94]}}, exit:{opacity:0,y:-8,transition:{duration:0.14}} }
+
+// ── SUNRISE/SUNSET CALCULATOR ──────────────────────────────────────────────
+function getSunTimes(lat, lng, date = new Date()) {
+  const rad = Math.PI / 180, deg = 180 / Math.PI
+  const dayOfYear = Math.floor((date - new Date(date.getFullYear(),0,0)) / 864e5)
+  const decl = -23.45 * Math.cos(rad * 360/365 * (dayOfYear + 10))
+  const ha = deg * Math.acos(
+    (Math.cos(rad * 90.833) - Math.sin(rad * lat) * Math.sin(rad * decl)) /
+    (Math.cos(rad * lat) * Math.cos(rad * decl))
+  )
+  const noon = 12 - lng / 15
+  const rise = noon - ha / 15
+  const set = noon + ha / 15
+  const toHM = h => { const hh = Math.floor(h), mm = Math.round((h - hh) * 60); return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}` }
+  return { sunrise: toHM(rise), sunset: toHM(set) }
+}
+
+function isInDarkPeriod(startStr, endStr) {
+  const now = new Date()
+  const nowMin = now.getHours() * 60 + now.getMinutes()
+  const [sh, sm] = startStr.split(':').map(Number)
+  const [eh, em] = endStr.split(':').map(Number)
+  const startMin = sh * 60 + sm, endMin = eh * 60 + em
+  if (startMin > endMin) return nowMin >= startMin || nowMin < endMin // es. 20:00 → 07:00
+  return nowMin >= startMin && nowMin < endMin
+}
 const ITEM_V = { initial:{opacity:0,x:-14,scale:0.97}, animate:{opacity:1,x:0,scale:1,transition:{type:'spring',stiffness:340,damping:28}}, exit:{opacity:0,x:48,scale:0.94,transition:{duration:0.17,ease:'easeIn'}} }
 const CARD_V = { initial:{opacity:0,y:18,scale:0.97}, animate:(i)=>({opacity:1,y:0,scale:1,transition:{delay:i*0.08,duration:0.28,ease:'easeOut'}}) }
 
@@ -4182,6 +4211,49 @@ function ImpostazioniTab({ data, updateData, onResetSetup, user, onLogout }) {
 
       {/* Esporta Calendario */}
       <div style={{...S.card,marginBottom:16}}>
+        <h3 style={{margin:'0 0 12px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-moon' style={{marginRight:6}} />Modalità scura automatica</h3>
+        <p style={{margin:'0 0 12px',fontSize:13,color:t.textSec}}>Cambia automaticamente tra chiaro e scuro</p>
+        <div style={{display:'flex',gap:6,marginBottom:14}}>
+          {[{v:'off',l:'Manuale',i:'fa-solid fa-hand'},{v:'schedule',l:'Orario',i:'fa-solid fa-clock'},{v:'sunrise',l:'Alba/Tramonto',i:'fa-solid fa-sun'}].map(o=>(
+            <motion.button key={o.v} whileTap={{scale:0.95}} onClick={()=>updateData('darkModeAuto',o.v)}
+              style={{flex:1,padding:'10px 6px',border:(data.darkModeAuto||'off')===o.v?`2px solid ${t.accent}`:'2px solid transparent',
+                background:(data.darkModeAuto||'off')===o.v?t.accent+'15':t.tagBg,borderRadius:10,cursor:'pointer',
+                display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+              <Fa icon={o.i} style={{fontSize:16,color:(data.darkModeAuto||'off')===o.v?t.accent:t.textSec}} />
+              <span style={{fontSize:11,fontWeight:(data.darkModeAuto||'off')===o.v?700:500,color:(data.darkModeAuto||'off')===o.v?t.accent:t.textSec}}>{o.l}</span>
+            </motion.button>
+          ))}
+        </div>
+        {(data.darkModeAuto||'off')==='schedule' && (
+          <div style={{display:'flex',gap:12,alignItems:'center',padding:12,background:t.rowBg,borderRadius:10}}>
+            <div style={{flex:1}}>
+              <label style={{fontSize:11,fontWeight:600,color:t.textSec,display:'block',marginBottom:4}}>
+                <Fa icon='fa-solid fa-moon' style={{marginRight:4}} />Scuro dalle
+              </label>
+              <input type="time" value={data.darkModeStart||'20:00'}
+                onChange={e=>updateData('darkModeStart',e.target.value)}
+                style={{width:'100%',padding:'8px',border:`1px solid ${t.inputBorder}`,borderRadius:8,fontSize:14,color:t.text,background:t.inputBg,boxSizing:'border-box'}} />
+            </div>
+            <div style={{flex:1}}>
+              <label style={{fontSize:11,fontWeight:600,color:t.textSec,display:'block',marginBottom:4}}>
+                <Fa icon='fa-solid fa-sun' style={{marginRight:4}} />Chiaro dalle
+              </label>
+              <input type="time" value={data.darkModeEnd||'07:00'}
+                onChange={e=>updateData('darkModeEnd',e.target.value)}
+                style={{width:'100%',padding:'8px',border:`1px solid ${t.inputBorder}`,borderRadius:8,fontSize:14,color:t.text,background:t.inputBg,boxSizing:'border-box'}} />
+            </div>
+          </div>
+        )}
+        {(data.darkModeAuto||'off')==='sunrise' && (
+          <div style={{padding:12,background:t.rowBg,borderRadius:10,fontSize:13,color:t.textSec,display:'flex',alignItems:'center',gap:8}}>
+            <Fa icon='fa-solid fa-location-dot' style={{color:t.accent}} />
+            <span>Usa la tua posizione GPS per calcolare alba e tramonto. Se la geolocalizzazione non è disponibile, usa Roma come riferimento.</span>
+          </div>
+        )}
+      </div>
+
+      {/* Esporta Calendario */}
+      <div style={{...S.card,marginBottom:16}}>
         <h3 style={{margin:'0 0 12px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-calendar-plus' style={{marginRight:6}} />Integrazione Calendario</h3>
         <p style={{margin:'0 0 10px',fontSize:13,color:t.textSec}}>Esporta scadenze e attività nel calendario del telefono</p>
         <motion.button whileTap={{scale:0.95}} onClick={()=>{generaICS(data);toast('File .ics scaricato — aprilo per importare nel calendario')}}
@@ -4710,6 +4782,7 @@ export default function DashboardCasa() {
   const [syncStatus, setSyncStatus] = useState('idle') // idle | syncing | ok | error
   const syncTimer = useRef(null)
   const lastSynced = useRef(null)
+  const dataLoaded = useRef(false)
   const w = useWindowWidth(); const mob = w < 768
 
   const toast = useCallback((msg, type='success') => {
@@ -4718,10 +4791,21 @@ export default function DashboardCasa() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 2800)
   }, [])
 
-  const handleSetupComplete = useCallback((realData) => {
+  const handleSetupComplete = useCallback(async (realData) => {
     setData(realData)
     setSetupDone(true)
-  }, [])
+    dataLoaded.current = true
+    // Salva subito su Supabase senza aspettare il debounce
+    if (user) {
+      try {
+        setSyncStatus('syncing')
+        const ts = new Date().toISOString()
+        const { error } = await supabase.from('dashboard_data').upsert({ id: user.id, data: realData, updated_at: ts })
+        setSyncStatus(error ? 'error' : 'ok')
+        if (!error) lastSynced.current = new Date(ts).getTime()
+      } catch { setSyncStatus('error') }
+    }
+  }, [user])
 
   const handleAuth = useCallback((u, isNew = false) => {
     setUser(u)
@@ -4729,6 +4813,7 @@ export default function DashboardCasa() {
     if (isNew) {
       setData(INITIAL)
       setSetupDone(false)
+      dataLoaded.current = true // nuovo utente, niente da caricare
     }
   }, [])
 
@@ -4737,6 +4822,7 @@ export default function DashboardCasa() {
     setUser(null)
     setData(INITIAL)
     setSetupDone(false)
+    dataLoaded.current = false
   }, [])
 
   // Check existing session on mount
@@ -4751,9 +4837,10 @@ export default function DashboardCasa() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Carica dati da Supabase
+  // Carica dati da Supabase + Polling sync tra dispositivi
   useEffect(() => {
     if (!user) return
+    dataLoaded.current = false
     const loadData = async () => {
       try {
         setSyncStatus('syncing')
@@ -4761,24 +4848,46 @@ export default function DashboardCasa() {
         if (!error && row?.data && Object.keys(row.data).length > 0) {
           setData({ ...INITIAL, ...row.data })
           setSetupDone(true)
+          lastSynced.current = new Date(row.updated_at).getTime()
         }
         setSyncStatus('ok')
-        lastSynced.current = Date.now()
       } catch { setSyncStatus('error') }
+      dataLoaded.current = true
     }
     loadData()
+
+    // Polling: controlla aggiornamenti da altri dispositivi ogni 5 secondi
+    const pollInterval = setInterval(async () => {
+      if (!dataLoaded.current) return
+      try {
+        const { data: row, error } = await supabase.from('dashboard_data').select('updated_at, data').eq('id', user.id).single()
+        if (error || !row) return
+        const remoteTs = new Date(row.updated_at).getTime()
+        if (lastSynced.current && remoteTs > lastSynced.current + 1500) {
+          // Dati più recenti trovati su Supabase — aggiorna
+          dataLoaded.current = false
+          setData({ ...INITIAL, ...row.data })
+          lastSynced.current = remoteTs
+          setSyncStatus('ok')
+          setTimeout(() => { dataLoaded.current = true }, 500)
+        }
+      } catch { /* ignora errori di polling */ }
+    }, 5000)
+
+    return () => clearInterval(pollInterval)
   }, [user])
 
-  // Salva su Supabase (debounced)
+  // Salva su Supabase (debounced) — solo dopo che i dati sono stati caricati
   useEffect(() => {
-    if (!user) return
+    if (!user || !dataLoaded.current) return
     if (syncTimer.current) clearTimeout(syncTimer.current)
     syncTimer.current = setTimeout(async () => {
       try {
         setSyncStatus('syncing')
-        const { error } = await supabase.from('dashboard_data').upsert({ id: user.id, data, updated_at: new Date().toISOString() })
+        const ts = new Date().toISOString()
+        const { error } = await supabase.from('dashboard_data').upsert({ id: user.id, data, updated_at: ts })
         setSyncStatus(error ? 'error' : 'ok')
-        if (!error) lastSynced.current = Date.now()
+        if (!error) lastSynced.current = new Date(ts).getTime()
       } catch { setSyncStatus('error') }
     }, 2000)
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current) }
@@ -4817,6 +4926,38 @@ export default function DashboardCasa() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [undo, redo])
+
+  // Auto dark mode (orario o alba/tramonto)
+  useEffect(() => {
+    if (!data.darkModeAuto || data.darkModeAuto === 'off') return
+    const check = () => {
+      let shouldDark = false
+      if (data.darkModeAuto === 'schedule') {
+        shouldDark = isInDarkPeriod(data.darkModeStart || '20:00', data.darkModeEnd || '07:00')
+      } else if (data.darkModeAuto === 'sunrise') {
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(pos => {
+            const { sunrise, sunset } = getSunTimes(pos.coords.latitude, pos.coords.longitude)
+            const dark = isInDarkPeriod(sunset, sunrise)
+            if (dark !== data.darkMode) updateData('darkMode', dark)
+          }, () => {
+            // Fallback Roma se geolocalizzazione negata
+            const { sunrise, sunset } = getSunTimes(41.9, 12.5)
+            const dark = isInDarkPeriod(sunset, sunrise)
+            if (dark !== data.darkMode) updateData('darkMode', dark)
+          })
+          return // async, updateData sarà chiamato nel callback
+        } else {
+          const { sunrise, sunset } = getSunTimes(41.9, 12.5)
+          shouldDark = isInDarkPeriod(sunset, sunrise)
+        }
+      }
+      if (shouldDark !== data.darkMode) updateData('darkMode', shouldDark)
+    }
+    check()
+    const interval = setInterval(check, 60000) // controlla ogni minuto
+    return () => clearInterval(interval)
+  }, [data.darkModeAuto, data.darkModeStart, data.darkModeEnd])
 
   const updateData = (key, val) => {
     if (key===null) { setData(val); return }
