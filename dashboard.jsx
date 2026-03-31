@@ -22,6 +22,23 @@ const I = (cls, style) => {
 // React-friendly inline FA icon
 const Fa = ({icon, style, className=''}) => <i className={`${icon} ${className}`} style={{...style}} />
 
+// Styled tooltip wrapper
+const Tip = ({label, children, pos='bottom'}) => {
+  const [show, setShow] = useState(false)
+  const top = pos === 'top'
+  return <span style={{position:'relative',display:'inline-flex'}}
+    onMouseEnter={()=>setShow(true)} onMouseLeave={()=>setShow(false)}>
+    {children}
+    {show && <span style={{position:'absolute',[top?'bottom':'top']:'calc(100% + 8px)',left:'50%',transform:'translateX(-50%)',
+      background:'#1E293B',color:'#F1F5F9',fontSize:11,fontWeight:500,padding:'5px 10px',borderRadius:6,
+      whiteSpace:'nowrap',pointerEvents:'none',zIndex:9999,boxShadow:'0 4px 12px rgba(0,0,0,.25)',
+      animation:'tipIn .15s ease'}}>{label}
+      <span style={{position:'absolute',[top?'top':'bottom']:'100%',left:'50%',transform:'translateX(-50%)',
+        border:'5px solid transparent',[top?'borderTopColor':'borderBottomColor']:'#1E293B'}} />
+    </span>}
+  </span>
+}
+
 // ── CONSTANTS ──────────────────────────────────────────────────────────────────
 const CATEGORIE_SPESE_DEFAULT    = ['Casa','Spesa','Bollette','Trasporti','Salute','Intrattenimento','Extra']
 const CATEGORIE_SCADENZE_DEFAULT = ['Assicurazione','Bollo','Manutenzione','Documento','Abbonamento','Altro']
@@ -2639,7 +2656,7 @@ function AccantonamentiTab({ data, updateData }) {
 }
 
 // ── IMPOSTAZIONI (categorie, backup, ecc.) ────────────────────────────────────
-function ImpostazioniTab({ data, updateData }) {
+function ImpostazioniTab({ data, updateData, onResetSetup }) {
   const t = useT(); const S = makeS(t)
   const w = useWindowWidth(); const mob = w < 768
   const [nuovaCatSpese, setNuovaCatSpese]       = useState('')
@@ -2726,8 +2743,372 @@ function ImpostazioniTab({ data, updateData }) {
             style={{padding:'10px 20px',background:'#10B981',color:'white',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>⬇ Esporta JSON</motion.button>
           <motion.button whileTap={{scale:0.95}} onClick={()=>{if(confirm('Reset completo?')) updateData(null, INITIAL)}}
             style={{padding:'10px 20px',background:'#EF4444',color:'white',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}><Fa icon='fa-regular fa-trash-can' />️ Reset dati</motion.button>
+          <motion.button whileTap={{scale:0.95}} onClick={onResetSetup}
+            style={{padding:'10px 20px',background:'#3B82F6',color:'white',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}><Fa icon='fa-solid fa-wand-magic-sparkles' style={{marginRight:6}} />Setup guidato</motion.button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── SETUP WIZARD ─────────────────────────────────────────────────────────────
+function SetupWizard({ onComplete }) {
+  const [step, setStep] = useState(0)
+  const [membri, setMembri] = useState([''])
+  const [nuovoM, setNuovoM] = useState('')
+  const [budget, setBudget] = useState('')
+  const [stipendio, setStipendio] = useState('')
+  const [goalRisparmio, setGoalRisparmio] = useState('')
+  const [catSpese, setCatSpese] = useState([...CATEGORIE_SPESE_DEFAULT])
+  const [catScadenze, setCatScadenze] = useState([...CATEGORIE_SCADENZE_DEFAULT])
+  const [nuovaCatS, setNuovaCatS] = useState('')
+  const [nuovaCatSc, setNuovaCatSc] = useState('')
+  const [scadenze, setScadenze] = useState([])
+  const [scNome, setScNome] = useState('')
+  const [scData, setScData] = useState('')
+  const [scCat, setScCat] = useState('')
+  const [scImporto, setScImporto] = useState('')
+  const [scRipetizione, setScRipetizione] = useState('nessuna')
+  const [darkMode, setDarkMode] = useState(false)
+
+  const theme = darkMode ? THEMES.dark : THEMES.light
+  const s = makeS(theme)
+  const STEPS = ['Benvenuto','Famiglia','Finanze','Categorie','Scadenze','Fatto']
+
+  const addMembro = () => {
+    const n = nuovoM.trim()
+    if (n && !membri.includes(n)) { setMembri(prev => [...prev, n]); setNuovoM('') }
+  }
+  const rmMembro = (m) => setMembri(prev => prev.filter(x => x !== m))
+
+  const addCatS = () => {
+    const n = nuovaCatS.trim()
+    if (n && !catSpese.includes(n)) { setCatSpese(prev => [...prev, n]); setNuovaCatS('') }
+  }
+  const addCatSc = () => {
+    const n = nuovaCatSc.trim()
+    if (n && !catScadenze.includes(n)) { setCatScadenze(prev => [...prev, n]); setNuovaCatSc('') }
+  }
+
+  const addScadenza = () => {
+    if (!scNome.trim() || !scData) return
+    setScadenze(prev => [...prev, {
+      id: Date.now(), nome: scNome.trim(), data: scData,
+      categoria: scCat || catScadenze[0] || 'Altro',
+      importoStimato: +scImporto || 0, ripetizione: scRipetizione,
+      note: '', gestita: false,
+    }])
+    setScNome(''); setScData(''); setScImporto(''); setScRipetizione('nessuna')
+  }
+
+  const finish = () => {
+    const oggi = new Date().toISOString().slice(0, 10)
+    const mese = new Date().toISOString().slice(0, 7)
+    const realData = {
+      ...INITIAL,
+      membrifamiglia: membri.filter(m => m.trim()),
+      budget: +budget || 2000,
+      entrateMensili: +stipendio || 0,
+      goalRisparmio: +goalRisparmio || 500,
+      categorieSpese: catSpese,
+      categorieScadenze: catScadenze,
+      scadenze,
+      darkMode,
+      stipendi: (+stipendio) ? [{ id: Date.now(), importo: +stipendio, mese, note: 'Setup iniziale', data: oggi }] : [],
+    }
+    onComplete(realData)
+  }
+
+  const canNext = () => {
+    if (step === 1) return membri.filter(m => m.trim()).length > 0
+    if (step === 2) return +budget > 0
+    return true
+  }
+
+  const lbl = { fontSize: 13, fontWeight: 600, color: theme.textSec, marginBottom: 6, display: 'block' }
+  const wrap = { display: 'flex', flexDirection: 'column', gap: 16 }
+
+  return (
+    <div style={{ minHeight: '100vh', background: theme.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: '-apple-system,BlinkMacSystemFont,Inter,Segoe UI,sans-serif' }}>
+      <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
+        style={{ background: theme.cardBg, borderRadius: 20, padding: 32, maxWidth: 520, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.12)' }}>
+
+        {/* Progress */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 28 }}>
+          {STEPS.map((_, i) => (
+            <div key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i <= step ? '#3B82F6' : theme.border, transition: 'background 0.3s' }} />
+          ))}
+        </div>
+
+        <AnimatePresence mode="wait">
+          <motion.div key={step} initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} transition={{ duration: 0.2 }}>
+
+            {/* STEP 0 — Benvenuto */}
+            {step === 0 && (
+              <div style={wrap}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}><Fa icon="fa-solid fa-house-chimney" style={{ color: '#3B82F6' }} /></div>
+                  <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: theme.text }}>Benvenuto in Casa Nostra</h2>
+                  <p style={{ margin: '10px 0 0', fontSize: 15, color: theme.textSec, lineHeight: 1.5 }}>
+                    Configuriamo insieme la tua dashboard con i tuoi dati reali. Ci vorranno solo pochi minuti.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, background: theme.tagBg, borderRadius: 12, marginTop: 8 }}>
+                  <Fa icon="fa-solid fa-circle-info" style={{ color: '#3B82F6', fontSize: 18 }} />
+                  <span style={{ fontSize: 13, color: theme.textSec, lineHeight: 1.4 }}>Potrai modificare tutto anche dopo dalle Impostazioni</span>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginTop: 4 }}>
+                  <input type="checkbox" checked={darkMode} onChange={e => setDarkMode(e.target.checked)}
+                    style={{ width: 18, height: 18, accentColor: '#3B82F6' }} />
+                  <span style={{ fontSize: 14, color: theme.text }}><Fa icon="fa-solid fa-moon" style={{ marginRight: 6 }} />Modalit&agrave; scura</span>
+                </label>
+              </div>
+            )}
+
+            {/* STEP 1 — Famiglia */}
+            {step === 1 && (
+              <div style={wrap}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: theme.text }}><Fa icon="fa-solid fa-users" style={{ marginRight: 8, color: '#3B82F6' }} />Membri della famiglia</h3>
+                  <p style={{ margin: '6px 0 0', fontSize: 13, color: theme.textSec }}>Chi vive in casa? Serviranno per assegnare spese e attivit&agrave;</p>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {membri.map((m, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: theme.rowBg, borderRadius: 10 }}>
+                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#EFF6FF', border: '2px solid #DBEAFE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#3B82F6' }}>
+                        {(m || '?')[0].toUpperCase()}
+                      </div>
+                      {i === 0 ? (
+                        <input value={m} onChange={e => setMembri(prev => { const a = [...prev]; a[0] = e.target.value; return a })}
+                          placeholder="Il tuo nome..." style={{ ...s.inputFull, flex: 1 }} />
+                      ) : (
+                        <>
+                          <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: theme.text }}>{m}</span>
+                          <button onClick={() => rmMembro(m)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444', fontSize: 16 }}>
+                            <Fa icon="fa-solid fa-xmark" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input value={nuovoM} onChange={e => setNuovoM(e.target.value)} placeholder="Aggiungi membro..."
+                    style={{ ...s.inputFull, flex: 1 }} onKeyDown={e => e.key === 'Enter' && addMembro()} />
+                  <motion.button whileTap={{ scale: 0.95 }} onClick={addMembro}
+                    style={{ padding: '8px 16px', background: '#3B82F6', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    <Fa icon="fa-solid fa-plus" />
+                  </motion.button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 2 — Finanze */}
+            {step === 2 && (
+              <div style={wrap}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: theme.text }}><Fa icon="fa-solid fa-wallet" style={{ marginRight: 8, color: '#10B981' }} />Le tue finanze</h3>
+                  <p style={{ margin: '6px 0 0', fontSize: 13, color: theme.textSec }}>Imposta stipendio, budget mensile e obiettivo di risparmio</p>
+                </div>
+                <div>
+                  <label style={lbl}><Fa icon="fa-solid fa-money-bill-wave" style={{ marginRight: 6 }} />Stipendio mensile netto</label>
+                  <div style={{ position: 'relative' }}>
+                    <input type="number" value={stipendio} onChange={e => setStipendio(e.target.value)} placeholder="es. 1800"
+                      style={{ ...s.inputFull, paddingRight: 30 }} />
+                    <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: theme.textMut, fontSize: 14 }}>&euro;</span>
+                  </div>
+                </div>
+                <div>
+                  <label style={lbl}><Fa icon="fa-solid fa-chart-pie" style={{ marginRight: 6 }} />Budget mensile spese</label>
+                  <div style={{ position: 'relative' }}>
+                    <input type="number" value={budget} onChange={e => setBudget(e.target.value)} placeholder="es. 1200"
+                      style={{ ...s.inputFull, paddingRight: 30 }} />
+                    <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: theme.textMut, fontSize: 14 }}>&euro;</span>
+                  </div>
+                </div>
+                <div>
+                  <label style={lbl}><Fa icon="fa-solid fa-piggy-bank" style={{ marginRight: 6 }} />Obiettivo risparmio mensile</label>
+                  <div style={{ position: 'relative' }}>
+                    <input type="number" value={goalRisparmio} onChange={e => setGoalRisparmio(e.target.value)} placeholder="es. 300"
+                      style={{ ...s.inputFull, paddingRight: 30 }} />
+                    <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: theme.textMut, fontSize: 14 }}>&euro;</span>
+                  </div>
+                </div>
+                {+stipendio > 0 && +budget > 0 && (
+                  <div style={{ padding: 14, background: theme.tagBg, borderRadius: 12, fontSize: 13, color: theme.textSec }}>
+                    <Fa icon="fa-solid fa-calculator" style={{ marginRight: 6, color: '#3B82F6' }} />
+                    Dopo spese e risparmio ti restano: <strong style={{ color: theme.text }}>&euro;{(+stipendio - +budget - (+goalRisparmio || 0)).toLocaleString('it-IT')}</strong>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* STEP 3 — Categorie */}
+            {step === 3 && (
+              <div style={wrap}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: theme.text }}><Fa icon="fa-solid fa-tags" style={{ marginRight: 8, color: '#F59E0B' }} />Categorie</h3>
+                  <p style={{ margin: '6px 0 0', fontSize: 13, color: theme.textSec }}>Personalizza le categorie per spese e scadenze</p>
+                </div>
+                <div>
+                  <label style={lbl}>Categorie spese</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                    {catSpese.map(c => (
+                      <span key={c} style={{ padding: '4px 10px', background: theme.tagBg, borderRadius: 6, fontSize: 12, color: theme.text, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {c}
+                        <button onClick={() => setCatSpese(prev => prev.filter(x => x !== c))}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.textMut, fontSize: 12, padding: 0, lineHeight: 1 }}><Fa icon="fa-solid fa-xmark" /></button>
+                      </span>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input value={nuovaCatS} onChange={e => setNuovaCatS(e.target.value)} placeholder="Nuova categoria..."
+                      style={{ ...s.inputFull, flex: 1, fontSize: 12 }} onKeyDown={e => e.key === 'Enter' && addCatS()} />
+                    <button onClick={addCatS} style={{ padding: '5px 12px', background: '#3B82F6', color: 'white', border: 'none', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}><Fa icon="fa-solid fa-plus" /></button>
+                  </div>
+                </div>
+                <div>
+                  <label style={lbl}>Categorie scadenze</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                    {catScadenze.map(c => (
+                      <span key={c} style={{ padding: '4px 10px', background: theme.tagBg, borderRadius: 6, fontSize: 12, color: theme.text, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {c}
+                        <button onClick={() => setCatScadenze(prev => prev.filter(x => x !== c))}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.textMut, fontSize: 12, padding: 0, lineHeight: 1 }}><Fa icon="fa-solid fa-xmark" /></button>
+                      </span>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input value={nuovaCatSc} onChange={e => setNuovaCatSc(e.target.value)} placeholder="Nuova categoria..."
+                      style={{ ...s.inputFull, flex: 1, fontSize: 12 }} onKeyDown={e => e.key === 'Enter' && addCatSc()} />
+                    <button onClick={addCatSc} style={{ padding: '5px 12px', background: '#3B82F6', color: 'white', border: 'none', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}><Fa icon="fa-solid fa-plus" /></button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 4 — Scadenze ricorrenti */}
+            {step === 4 && (
+              <div style={wrap}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: theme.text }}><Fa icon="fa-solid fa-calendar-check" style={{ marginRight: 8, color: '#EF4444' }} />Scadenze fisse</h3>
+                  <p style={{ margin: '6px 0 0', fontSize: 13, color: theme.textSec }}>Aggiungi bollette, assicurazioni e scadenze ricorrenti</p>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <input value={scNome} onChange={e => setScNome(e.target.value)} placeholder="Nome scadenza (es. Affitto, Bolletta luce...)"
+                    style={s.inputFull} />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input type="date" value={scData} onChange={e => setScData(e.target.value)} style={{ ...s.input, flex: 1 }} />
+                    <select value={scCat} onChange={e => setScCat(e.target.value)} style={{ ...s.input, flex: 1 }}>
+                      <option value="">Categoria</option>
+                      {catScadenze.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <input type="number" value={scImporto} onChange={e => setScImporto(e.target.value)} placeholder="Importo stimato"
+                        style={{ ...s.inputFull, paddingRight: 24 }} />
+                      <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: theme.textMut, fontSize: 13 }}>&euro;</span>
+                    </div>
+                    <select value={scRipetizione} onChange={e => setScRipetizione(e.target.value)} style={{ ...s.input, flex: 1 }}>
+                      <option value="nessuna">Non ricorrente</option>
+                      <option value="mensile">Mensile</option>
+                      <option value="bimestrale">Bimestrale</option>
+                      <option value="trimestrale">Trimestrale</option>
+                      <option value="semestrale">Semestrale</option>
+                      <option value="annuale">Annuale</option>
+                    </select>
+                  </div>
+                  <motion.button whileTap={{ scale: 0.96 }} onClick={addScadenza}
+                    style={{ padding: '10px', background: '#3B82F6', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    <Fa icon="fa-solid fa-plus" style={{ marginRight: 6 }} />Aggiungi scadenza
+                  </motion.button>
+                </div>
+                {scadenze.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                    <label style={lbl}>Scadenze aggiunte ({scadenze.length})</label>
+                    {scadenze.map(sc => (
+                      <div key={sc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: theme.rowBg, borderRadius: 8, fontSize: 13 }}>
+                        <div>
+                          <span style={{ fontWeight: 600, color: theme.text }}>{sc.nome}</span>
+                          <span style={{ color: theme.textMut, marginLeft: 8 }}>{sc.data}</span>
+                          {sc.ripetizione !== 'nessuna' && <span style={{ marginLeft: 6, padding: '1px 6px', background: '#DBEAFE', color: '#2563EB', borderRadius: 4, fontSize: 10, fontWeight: 600 }}>{sc.ripetizione}</span>}
+                          {sc.importoStimato > 0 && <span style={{ marginLeft: 6, color: '#EF4444', fontWeight: 600 }}>&euro;{sc.importoStimato}</span>}
+                        </div>
+                        <button onClick={() => setScadenze(prev => prev.filter(x => x.id !== sc.id))}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444' }}><Fa icon="fa-solid fa-trash" /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {scadenze.length === 0 && (
+                  <div style={{ padding: 14, background: theme.tagBg, borderRadius: 12, fontSize: 13, color: theme.textMut, textAlign: 'center' }}>
+                    <Fa icon="fa-regular fa-lightbulb" style={{ marginRight: 6 }} />Puoi aggiungere scadenze anche dopo dalla tab Scadenze
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* STEP 5 — Riepilogo */}
+            {step === 5 && (
+              <div style={wrap}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}><Fa icon="fa-solid fa-circle-check" style={{ color: '#10B981' }} /></div>
+                  <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: theme.text }}>Tutto pronto!</h2>
+                  <p style={{ margin: '8px 0 0', fontSize: 14, color: theme.textSec }}>Ecco un riepilogo della tua configurazione</p>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+                  {[
+                    { icon: 'fa-solid fa-users', label: 'Membri', val: membri.filter(m => m.trim()).join(', '), color: '#3B82F6' },
+                    { icon: 'fa-solid fa-money-bill-wave', label: 'Stipendio', val: (+stipendio ? '\u20AC' + (+stipendio).toLocaleString('it-IT') : 'Non impostato'), color: '#10B981' },
+                    { icon: 'fa-solid fa-chart-pie', label: 'Budget', val: '\u20AC' + (+budget || 2000).toLocaleString('it-IT') + '/mese', color: '#F59E0B' },
+                    { icon: 'fa-solid fa-piggy-bank', label: 'Obiettivo risparmio', val: '\u20AC' + (+goalRisparmio || 500).toLocaleString('it-IT') + '/mese', color: '#8B5CF6' },
+                    { icon: 'fa-solid fa-tags', label: 'Categorie spese', val: catSpese.length + ' categorie', color: '#EC4899' },
+                    { icon: 'fa-solid fa-calendar-check', label: 'Scadenze', val: scadenze.length + ' scadenze impostate', color: '#EF4444' },
+                  ].map(r => (
+                    <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: theme.rowBg, borderRadius: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 10, background: r.color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Fa icon={r.icon} style={{ color: r.color, fontSize: 15 }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 12, color: theme.textMut, fontWeight: 500 }}>{r.label}</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>{r.val}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Navigation */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 28, gap: 12 }}>
+          {step > 0 ? (
+            <motion.button whileTap={{ scale: 0.96 }} onClick={() => setStep(step - 1)}
+              style={{ padding: '10px 20px', background: theme.tagBg, color: theme.textSec, border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+              <Fa icon="fa-solid fa-arrow-left" style={{ marginRight: 6 }} />Indietro
+            </motion.button>
+          ) : <div />}
+          {step < 5 ? (
+            <motion.button whileTap={{ scale: 0.96 }} onClick={() => canNext() && setStep(step + 1)}
+              style={{ padding: '10px 24px', background: canNext() ? '#3B82F6' : theme.border, color: canNext() ? 'white' : theme.textMut, border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: canNext() ? 'pointer' : 'default' }}>
+              Avanti<Fa icon="fa-solid fa-arrow-right" style={{ marginLeft: 6 }} />
+            </motion.button>
+          ) : (
+            <motion.button whileTap={{ scale: 0.96 }} onClick={finish}
+              style={{ padding: '10px 28px', background: '#10B981', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+              <Fa icon="fa-solid fa-rocket" style={{ marginRight: 6 }} />Inizia!
+            </motion.button>
+          )}
+        </div>
+
+        {/* Step indicator text */}
+        <div style={{ textAlign: 'center', marginTop: 16, fontSize: 12, color: theme.textMut }}>
+          {step + 1} di {STEPS.length} &mdash; {STEPS[step]}
+        </div>
+      </motion.div>
     </div>
   )
 }
@@ -2736,6 +3117,7 @@ function ImpostazioniTab({ data, updateData }) {
 export default function DashboardCasa() {
   const [tab, setTab]   = useState('home')
   const [data, setData] = useState(INITIAL)
+  const [setupDone, setSetupDone] = useState(() => !!localStorage.getItem('dashboard-casa'))
   const importRef       = useRef(null)
   const [showMembri, setShowMembri] = useState(false)
   const [nuovoMembro, setNuovoMembro] = useState('')
@@ -2745,12 +3127,18 @@ export default function DashboardCasa() {
   const [history, setHistory] = useState([])
   const [historyIdx, setHistoryIdx] = useState(-1)
   const skipHistory = useRef(false)
+  const [mobileMore, setMobileMore] = useState(false)
   const w = useWindowWidth(); const mob = w < 768
 
   const toast = useCallback((msg, type='success') => {
     const id = Date.now() + Math.random()
     setToasts(prev => [...prev, { id, msg, type }])
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 2800)
+  }, [])
+
+  const handleSetupComplete = useCallback((realData) => {
+    setData(realData)
+    setSetupDone(true)
   }, [])
 
   // Persistence
@@ -2934,6 +3322,27 @@ export default function DashboardCasa() {
     {id:'impostazioni', label:<><Fa icon="fa-solid fa-gear" /> Impostazioni</>, color:dk?'#94A3B8':'#64748B'},
   ]
 
+  // Mobile bottom nav — 5 tab principali + "Altro"
+  const BOTTOM_TABS = ['home','spese','scadenze','attivita','analytics']
+  const bottomTabs = tabs.filter(t => BOTTOM_TABS.includes(t.id))
+  const moreTabs = tabs.filter(t => !BOTTOM_TABS.includes(t.id))
+  const bottomIcons = {
+    home:'fa-solid fa-house', spese:'fa-solid fa-wallet', scadenze:'fa-regular fa-calendar-check',
+    attivita:'fa-solid fa-list-check', analytics:'fa-solid fa-chart-pie',
+  }
+  const bottomLabels = { home:'Home', spese:'Spese', scadenze:'Scadenze', attivita:'Attività', analytics:'Analytics' }
+  const moreIcons = {
+    stipendio:'fa-solid fa-briefcase', consumi:'fa-solid fa-bolt', calendario:'fa-regular fa-calendar',
+    note:'fa-regular fa-note-sticky', contatti:'fa-solid fa-address-book', inventario:'fa-solid fa-box-open',
+    accantonamenti:'fa-solid fa-piggy-bank', impostazioni:'fa-solid fa-gear',
+  }
+  const moreLabels = {
+    stipendio:'Stipendio', consumi:'Consumi', calendario:'Calendario', note:'Note',
+    contatti:'Contatti', inventario:'Inventario', accantonamenti:'Risparmi', impostazioni:'Impostazioni',
+  }
+
+  if (!setupDone) return <SetupWizard onComplete={handleSetupComplete} />
+
   return (
     <ThemeCtx.Provider value={theme}>
     <ToastCtx.Provider value={toast}>
@@ -2946,10 +3355,10 @@ export default function DashboardCasa() {
       `}</style>
       <div style={{minHeight:'100vh',background:theme.bg,fontFamily:'system-ui,-apple-system,sans-serif',color:theme.text}}>
         {/* HEADER */}
-        <header style={{background:theme.headerBg,borderBottom:`1px solid ${theme.border}`,padding:mob?'10px 12px':'13px 24px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+        <header style={{background:theme.headerBg,borderBottom:`1px solid ${theme.border}`,padding:mob?'8px 12px':'13px 24px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
           <div style={{display:'flex',alignItems:'center',gap:mob?8:12,minWidth:0}}>
             <motion.span animate={{rotate:[0,12,-6,0]}} transition={{delay:0.8,duration:0.55,ease:'easeInOut'}}
-              style={{fontSize:mob?22:28,display:'inline-block',flexShrink:0}}><Fa icon='fa-solid fa-house' /></motion.span>
+              style={{fontSize:mob?20:28,display:'inline-block',flexShrink:0,color:theme.text}}><Fa icon='fa-solid fa-house' /></motion.span>
             <div style={{minWidth:0}}>
               <h1 style={{margin:0,fontSize:mob?15:19,fontWeight:700,color:theme.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>Casa Nostra</h1>
               {!mob && <p style={{margin:0,fontSize:12,color:theme.textMut}}>
@@ -2958,67 +3367,84 @@ export default function DashboardCasa() {
             </div>
           </div>
 
-          <div style={{display:'flex',alignItems:'center',gap:mob?4:8,flexWrap:'wrap',justifyContent:'flex-end'}}>
-            {!mob && data.membrifamiglia.map(m=>(
-              <motion.div key={m} whileHover={{scale:1.12}} title={m} onClick={()=>setShowMembri(true)}
-                style={{width:32,height:32,borderRadius:'50%',background:'#EFF6FF',border:'2px solid #DBEAFE',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'#3B82F6',cursor:'pointer'}}>
-                {m[0].toUpperCase()}
-              </motion.div>
-            ))}
-            {mob && <motion.button whileTap={{scale:0.9}} onClick={()=>setShowMembri(true)}
-              style={{width:32,height:32,borderRadius:'50%',background:theme.tagBg,border:'none',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center',color:theme.textSec}}><Fa icon='fa-solid fa-users' /></motion.button>}
-            {!mob && <motion.button whileHover={{scale:1.1}} whileTap={{scale:0.9}} onClick={()=>setShowMembri(true)}
-              style={{width:32,height:32,borderRadius:'50%',background:theme.tagBg,border:`2px dashed ${theme.border}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,cursor:'pointer',color:theme.textMut}}>+</motion.button>}
-
-            {!mob && <div style={{width:1,height:24,background:theme.border,margin:'0 4px'}} />}
-
-            <motion.button whileTap={{scale:0.9}} onClick={()=>updateData('darkMode',!data.darkMode)} title={data.darkMode?'Light mode':'Dark mode'}
-              style={{width:32,height:32,borderRadius:'50%',background:theme.tagBg,border:'none',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center'}}>
-              {data.darkMode?<Fa icon='fa-solid fa-sun' />:<Fa icon='fa-solid fa-moon' />}
-            </motion.button>
-
-            <motion.button whileTap={{scale:0.9}} onClick={()=>setShowSearch(true)} title="Cerca (Ctrl+K)"
-              style={{width:32,height:32,borderRadius:'50%',background:theme.tagBg,border:'none',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center'}}>
-              <Fa icon='fa-solid fa-magnifying-glass' />
-            </motion.button>
-
-            {!mob && <>
-              <motion.button whileTap={{scale:0.9}} onClick={undo} title="Annulla (Ctrl+Z)" disabled={historyIdx<=0}
-                style={{width:32,height:32,borderRadius:'50%',background:theme.tagBg,border:'none',cursor:historyIdx<=0?'default':'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',opacity:historyIdx<=0?0.3:1}}>
-                <Fa icon='fa-solid fa-rotate-left' />
+          <div style={{display:'flex',alignItems:'center',gap:mob?6:8,flexWrap:'nowrap',justifyContent:'flex-end'}}>
+            {/* Mobile: solo dark mode, cerca, export/import */}
+            {mob && <>
+              <motion.button whileTap={{scale:0.9}} onClick={()=>updateData('darkMode',!data.darkMode)}
+                style={{width:36,height:36,borderRadius:'50%',background:theme.tagBg,border:'none',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',color:theme.textSec}}>
+                {data.darkMode?<Fa icon='fa-solid fa-sun' />:<Fa icon='fa-solid fa-moon' />}
               </motion.button>
-              <motion.button whileTap={{scale:0.9}} onClick={redo} title="Ripristina (Ctrl+Y)" disabled={historyIdx>=history.length-1}
-                style={{width:32,height:32,borderRadius:'50%',background:theme.tagBg,border:'none',cursor:historyIdx>=history.length-1?'default':'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',opacity:historyIdx>=history.length-1?0.3:1}}>
-                <Fa icon='fa-solid fa-rotate-right' />
+              <motion.button whileTap={{scale:0.9}} onClick={()=>setShowSearch(true)}
+                style={{width:36,height:36,borderRadius:'50%',background:theme.tagBg,border:'none',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',color:theme.textSec}}>
+                <Fa icon='fa-solid fa-magnifying-glass' />
+              </motion.button>
+              <motion.button whileTap={{scale:0.9}} onClick={()=>setShowMembri(true)}
+                style={{width:36,height:36,borderRadius:'50%',background:theme.tagBg,border:'none',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',color:theme.textSec}}>
+                <Fa icon='fa-solid fa-users' />
               </motion.button>
             </>}
 
-            {!mob && <motion.button whileTap={{scale:0.9}} onClick={requestNotif} title={notifPerm==='granted'?'Notifiche attive':notifPerm==='denied'?'Notifiche bloccate':'Abilita notifiche'}
-              style={{width:32,height:32,borderRadius:'50%',background:notifPerm==='granted'?'#D1FAE5':notifPerm==='denied'?'#FEE2E2':theme.tagBg,border:'none',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',color:notifPerm==='granted'?'#059669':notifPerm==='denied'?'#DC2626':theme.textSec}}>
-              <Fa icon={notifPerm==='granted'?'fa-solid fa-bell':'fa-regular fa-bell'} />
-            </motion.button>}
-
-            <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}} onClick={()=>exportJSON(data)}
-              style={{padding:mob?'5px 8px':'6px 10px',background:theme.tagBg,border:'none',borderRadius:8,cursor:'pointer',fontSize:mob?11:12,color:theme.textSec,fontWeight:500}}><Fa icon='fa-solid fa-download' style={{marginRight:mob?0:4}} />{mob?'':'JSON'}</motion.button>
+            {/* Desktop: full controls */}
             {!mob && <>
+              {data.membrifamiglia.map(m=>(
+                <motion.div key={m} whileHover={{scale:1.12}} title={m} onClick={()=>setShowMembri(true)}
+                  style={{width:32,height:32,borderRadius:'50%',background:'#EFF6FF',border:'2px solid #DBEAFE',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'#3B82F6',cursor:'pointer'}}>
+                  {m[0].toUpperCase()}
+                </motion.div>
+              ))}
+              <motion.button whileHover={{scale:1.1}} whileTap={{scale:0.9}} onClick={()=>setShowMembri(true)}
+                style={{width:32,height:32,borderRadius:'50%',background:theme.tagBg,border:`2px dashed ${theme.border}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,cursor:'pointer',color:theme.textMut}}>+</motion.button>
+              <div style={{width:1,height:24,background:theme.border,margin:'0 4px'}} />
+              <Tip label={data.darkMode?'Light mode':'Dark mode'}>
+                <motion.button whileTap={{scale:0.9}} onClick={()=>updateData('darkMode',!data.darkMode)}
+                  style={{width:32,height:32,borderRadius:'50%',background:theme.tagBg,border:'none',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  {data.darkMode?<Fa icon='fa-solid fa-sun' />:<Fa icon='fa-solid fa-moon' />}
+                </motion.button>
+              </Tip>
+              <Tip label="Cerca (Ctrl+K)">
+                <motion.button whileTap={{scale:0.9}} onClick={()=>setShowSearch(true)}
+                  style={{width:32,height:32,borderRadius:'50%',background:theme.tagBg,border:'none',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <Fa icon='fa-solid fa-magnifying-glass' />
+                </motion.button>
+              </Tip>
+              <Tip label="Annulla (Ctrl+Z)">
+                <motion.button whileTap={{scale:0.9}} onClick={undo} disabled={historyIdx<=0}
+                  style={{width:32,height:32,borderRadius:'50%',background:theme.tagBg,border:'none',cursor:historyIdx<=0?'default':'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',opacity:historyIdx<=0?0.3:1}}>
+                  <Fa icon='fa-solid fa-rotate-left' />
+                </motion.button>
+              </Tip>
+              <Tip label="Ripristina (Ctrl+Y)">
+                <motion.button whileTap={{scale:0.9}} onClick={redo} disabled={historyIdx>=history.length-1}
+                  style={{width:32,height:32,borderRadius:'50%',background:theme.tagBg,border:'none',cursor:historyIdx>=history.length-1?'default':'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',opacity:historyIdx>=history.length-1?0.3:1}}>
+                  <Fa icon='fa-solid fa-rotate-right' />
+                </motion.button>
+              </Tip>
+              <Tip label={notifPerm==='granted'?'Notifiche attive':notifPerm==='denied'?'Notifiche bloccate':'Abilita notifiche'}>
+                <motion.button whileTap={{scale:0.9}} onClick={requestNotif}
+                  style={{width:32,height:32,borderRadius:'50%',background:notifPerm==='granted'?'#D1FAE5':notifPerm==='denied'?'#FEE2E2':theme.tagBg,border:'none',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',color:notifPerm==='granted'?'#059669':notifPerm==='denied'?'#DC2626':theme.textSec}}>
+                  <Fa icon={notifPerm==='granted'?'fa-solid fa-bell':'fa-regular fa-bell'} />
+                </motion.button>
+              </Tip>
+              <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}} onClick={()=>exportJSON(data)}
+                style={{padding:'6px 10px',background:theme.tagBg,border:'none',borderRadius:8,cursor:'pointer',fontSize:12,color:theme.textSec,fontWeight:500}}><Fa icon='fa-solid fa-download' style={{marginRight:4}} />JSON</motion.button>
               <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}} onClick={()=>exportCSV(data)}
                 style={{padding:'6px 10px',background:theme.tagBg,border:'none',borderRadius:8,cursor:'pointer',fontSize:12,color:theme.textSec,fontWeight:500}}><Fa icon='fa-solid fa-file-csv' style={{marginRight:4}} />CSV</motion.button>
               <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}} onClick={()=>exportReport(data)}
                 style={{padding:'6px 10px',background:theme.tagBg,border:'none',borderRadius:8,cursor:'pointer',fontSize:12,color:theme.textSec,fontWeight:500}}><Fa icon='fa-solid fa-file-lines' style={{marginRight:4}} />Report</motion.button>
+              <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}} onClick={()=>importRef.current?.click()}
+                style={{padding:'6px 10px',background:theme.tagBg,border:'none',borderRadius:8,cursor:'pointer',fontSize:12,color:theme.textSec,fontWeight:500}}><Fa icon='fa-solid fa-upload' style={{marginRight:4}} />Import</motion.button>
+              <input ref={importRef} type="file" accept=".json" onChange={importJSON} style={{display:'none'}} />
             </>}
-            <motion.button whileHover={{scale:1.04}} whileTap={{scale:0.95}} onClick={()=>importRef.current?.click()}
-              style={{padding:mob?'5px 8px':'6px 10px',background:theme.tagBg,border:'none',borderRadius:8,cursor:'pointer',fontSize:mob?11:12,color:theme.textSec,fontWeight:500}}><Fa icon='fa-solid fa-upload' style={{marginRight:mob?0:4}} />{mob?'':'Import'}</motion.button>
-            <input ref={importRef} type="file" accept=".json" onChange={importJSON} style={{display:'none'}} />
           </div>
         </header>
 
-        {/* NAV */}
-        <nav style={{background:theme.navBg,borderBottom:`1px solid ${theme.border}`,padding:mob?'0 8px':'0 24px',display:'flex',gap:mob?0:2,overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
+        {/* NAV — only desktop */}
+        {!mob && <nav style={{background:theme.navBg,borderBottom:`1px solid ${theme.border}`,padding:'0 24px',display:'flex',gap:2,overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
           {tabs.map(tb=>(
             <motion.button key={tb.id} onClick={()=>setTab(tb.id)} whileTap={{scale:0.94}}
               style={{
-                padding:mob?'10px 10px':'12px 14px',border:'none',background:'none',cursor:'pointer',
-                fontSize:mob?12:13,fontWeight:tab===tb.id?700:400,
+                padding:'12px 14px',border:'none',background:'none',cursor:'pointer',
+                fontSize:13,fontWeight:tab===tb.id?700:400,
                 color:tab===tb.id?tb.color:theme.textSec,
                 borderBottom:tab===tb.id?`3px solid ${tb.color}`:'3px solid transparent',
                 whiteSpace:'nowrap',position:'relative',transition:'color 0.15s',
@@ -3027,10 +3453,10 @@ export default function DashboardCasa() {
               {tb.badge>0 && <NotifBadge count={tb.badge} color={tb.badgeColor} />}
             </motion.button>
           ))}
-        </nav>
+        </nav>}
 
         {/* CONTENT */}
-        <main style={{width:'100%',margin:0,padding:mob?'14px 10px':'24px 24px'}}>
+        <main style={{width:'100%',margin:0,padding:mob?'12px 10px 80px':'24px 24px'}}>
           <AnimatePresence mode="wait">
             <motion.div key={tab} variants={TAB_V} initial="initial" animate="animate" exit="exit">
               {tab==='home'        && <HomeTab       data={data} setTab={setTab} />}
@@ -3045,7 +3471,7 @@ export default function DashboardCasa() {
               {tab==='contatti'    && <ContattiTab   data={data} updateData={updateData} />}
               {tab==='inventario'  && <InventarioTab data={data} updateData={updateData} />}
               {tab==='accantonamenti' && <AccantonamentiTab data={data} updateData={updateData} />}
-              {tab==='impostazioni'&& <ImpostazioniTab data={data} updateData={updateData} />}
+              {tab==='impostazioni'&& <ImpostazioniTab data={data} updateData={updateData} onResetSetup={()=>setSetupDone(false)} />}
             </motion.div>
           </AnimatePresence>
         </main>
@@ -3124,6 +3550,69 @@ export default function DashboardCasa() {
                     </div>
                   )
                 })()}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Mobile Bottom Nav */}
+      {mob && (
+        <nav style={{position:'fixed',bottom:0,left:0,right:0,background:theme.headerBg,borderTop:`1px solid ${theme.border}`,
+          display:'flex',justifyContent:'space-around',alignItems:'stretch',zIndex:900,
+          paddingBottom:'env(safe-area-inset-bottom,0)',boxShadow:'0 -2px 12px rgba(0,0,0,0.08)'}}>
+          {bottomTabs.map(bt=>{
+            const active = tab===bt.id
+            const tb = tabs.find(t=>t.id===bt.id)
+            return (
+              <motion.button key={bt.id} whileTap={{scale:0.9}} onClick={()=>{setTab(bt.id);setMobileMore(false)}}
+                style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,
+                  padding:'8px 0 6px',border:'none',background:'none',cursor:'pointer',position:'relative',
+                  color:active?tb.color:theme.textMut,transition:'color 0.15s'}}>
+                <Fa icon={bottomIcons[bt.id]} style={{fontSize:18}} />
+                <span style={{fontSize:10,fontWeight:active?700:500}}>{bottomLabels[bt.id]}</span>
+                {active && <motion.div layoutId="bottomActive" style={{position:'absolute',top:0,left:'20%',right:'20%',height:3,borderRadius:'0 0 3px 3px',background:tb.color}} />}
+                {bt.badge>0 && <span style={{position:'absolute',top:4,right:'22%',width:16,height:16,borderRadius:'50%',background:bt.badgeColor||'#EF4444',color:'white',fontSize:9,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center'}}>{bt.badge}</span>}
+              </motion.button>
+            )
+          })}
+          {/* Altro button */}
+          <motion.button whileTap={{scale:0.9}} onClick={()=>setMobileMore(!mobileMore)}
+            style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,
+              padding:'8px 0 6px',border:'none',background:'none',cursor:'pointer',
+              color:mobileMore||moreTabs.some(t=>t.id===tab)?'#3B82F6':theme.textMut,transition:'color 0.15s'}}>
+            <Fa icon={mobileMore?'fa-solid fa-xmark':'fa-solid fa-grip'} style={{fontSize:18}} />
+            <span style={{fontSize:10,fontWeight:mobileMore?700:500}}>Altro</span>
+          </motion.button>
+        </nav>
+      )}
+
+      {/* Mobile "Altro" Drawer */}
+      <AnimatePresence>
+        {mob && mobileMore && (
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+            onClick={()=>setMobileMore(false)}
+            style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.35)',zIndex:899}}>
+            <motion.div initial={{y:'100%'}} animate={{y:0}} exit={{y:'100%'}} transition={{type:'spring',stiffness:300,damping:30}}
+              onClick={e=>e.stopPropagation()}
+              style={{position:'absolute',bottom:60,left:0,right:0,background:theme.cardBg,borderRadius:'20px 20px 0 0',
+                padding:'12px 16px',paddingBottom:'calc(env(safe-area-inset-bottom,0) + 12px)',
+                boxShadow:'0 -8px 30px rgba(0,0,0,0.15)',maxHeight:'60vh',overflow:'auto'}}>
+              <div style={{width:36,height:4,borderRadius:2,background:theme.border,margin:'0 auto 14px'}} />
+              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
+                {moreTabs.map(mt=>{
+                  const active = tab===mt.id
+                  return (
+                    <motion.button key={mt.id} whileTap={{scale:0.92}} onClick={()=>{setTab(mt.id);setMobileMore(false)}}
+                      style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,padding:'14px 4px',
+                        background:active?mt.color+'18':theme.tagBg,border:active?`2px solid ${mt.color}`:`2px solid transparent`,
+                        borderRadius:14,cursor:'pointer',transition:'all 0.15s'}}>
+                      <Fa icon={moreIcons[mt.id]} style={{fontSize:20,color:active?mt.color:theme.textSec}} />
+                      <span style={{fontSize:11,fontWeight:active?700:500,color:active?mt.color:theme.textSec}}>{moreLabels[mt.id]}</span>
+                      {mt.badge>0 && <span style={{padding:'1px 6px',borderRadius:8,background:mt.badgeColor||'#EF4444',color:'white',fontSize:9,fontWeight:700}}>{mt.badge}</span>}
+                    </motion.button>
+                  )
+                })}
               </div>
             </motion.div>
           </motion.div>

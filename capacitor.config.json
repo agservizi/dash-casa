@@ -1,0 +1,12 @@
+{
+  "appId": "com.casanostra.app",
+  "appName": "Casa Nostra",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  }
+}
