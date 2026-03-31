@@ -6,6 +6,13 @@
 
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react'
 import { motion, AnimatePresence, Reorder } from 'framer-motion'
+import { createClient } from '@supabase/supabase-js'
+
+// ── SUPABASE ───────────────────────────────────────────────────────────────────
+const supabase = createClient(
+  'https://dszjuniyjwjifjbxjdjl.supabase.co',
+  'sb_publishable_2u9avH3evns68qQECSEKFQ_ZealKOk7'
+)
 import {
   ResponsiveContainer, PieChart, Pie, Cell,
   LineChart, Line, BarChart, Bar, AreaChart, Area,
@@ -300,6 +307,20 @@ const COLORI_CAT = {
 
 const TIPI_ACCANTONAMENTO = ['Vacanza','Auto','Casa','Viaggi','Emergenze','Altro']
 
+const ACCENT_COLORS = [
+  {value:'#3B82F6',label:'Blu'},
+  {value:'#10B981',label:'Verde'},
+  {value:'#8B5CF6',label:'Viola'},
+  {value:'#F59E0B',label:'Ambra'},
+  {value:'#EF4444',label:'Rosso'},
+  {value:'#EC4899',label:'Rosa'},
+  {value:'#06B6D4',label:'Ciano'},
+  {value:'#F97316',label:'Arancione'},
+  {value:'#6366F1',label:'Indaco'},
+]
+
+const LISTA_SPESA_CAT = ['Frutta/Verdura','Carne/Pesce','Latticini','Pane/Pasta','Bevande','Surgelati','Pulizia','Igiene','Altro']
+
 const INITIAL = {
   spese:[], scadenze:[], attivita:[], consumi:[],
   membrifamiglia:['Carmine','Partner','Bambino'],
@@ -318,23 +339,29 @@ const INITIAL = {
   darkMode:false,
   backupIntervallo:0,
   ultimoBackup:null,
+  listaSpesa:[],
+  accentColor:'#3B82F6',
+  fotoAllegati:{},
 }
 
 // ── THEMES ─────────────────────────────────────────────────────────────────────
-const THEMES = {
+const makeThemes = (accent='#3B82F6') => ({
   light: {
     bg:'#F8FAFC', cardBg:'white', text:'#1E293B', textSec:'#64748B',
     textMut:'#94A3B8', border:'#E2E8F0', inputBg:'white', inputBorder:'#E2E8F0',
     rowBg:'#F8FAFC', shadow:'0 1px 3px rgba(0,0,0,0.06)',
     headerBg:'white', navBg:'white', tagBg:'#F1F5F9', tagText:'#64748B',
+    accent, accentBg:accent+'15', accentLight:accent+'30',
   },
   dark: {
     bg:'#0F172A', cardBg:'#1E293B', text:'#F1F5F9', textSec:'#94A3B8',
     textMut:'#64748B', border:'#334155', inputBg:'#334155', inputBorder:'#475569',
     rowBg:'#283548', shadow:'0 1px 3px rgba(0,0,0,0.4)',
     headerBg:'#1E293B', navBg:'#1E293B', tagBg:'#334155', tagText:'#94A3B8',
+    accent, accentBg:accent+'15', accentLight:accent+'30',
   },
-}
+})
+const THEMES = makeThemes()
 const ThemeCtx = createContext(THEMES.light)
 const useT = () => useContext(ThemeCtx)
 
@@ -555,34 +582,205 @@ async function loadTesseract() {
   })
 }
 
-// Estrai importo e data da testo OCR
+// Estrai importo e data da testo OCR (migliorato per bollette)
 function parseOCR(text) {
   const result = {}
-  // Cerca importi (€, EUR, TOTALE)
+  // Normalizza testo OCR: rimuovi spazi multipli, caratteri speciali problematici
+  const cleanText = text.replace(/\s+/g,' ').replace(/[*#]+/g,' ').trim()
+  // Pattern per numeri che OCR può frammentare: "12, 50" "12 ,50" "12 , 50"
+  const amt = '(\\d{1,6})\\s*[.,]\\s*(\\d{1,2})'
+  // Cerca importi (€, EUR, TOTALE, scontrini, bollette)
   const importoPatterns = [
-    /(?:totale|total|tot\.?)\s*[:=]?\s*[€$]?\s*(\d+[.,]\d{2})/i,
-    /[€]\s*(\d+[.,]\d{2})/,
-    /(\d+[.,]\d{2})\s*[€]/,
-    /(?:importo|amount)\s*[:=]?\s*[€$]?\s*(\d+[.,]\d{2})/i,
+    // Bollette
+    new RegExp('(?:totale\\s*(?:da\\s*pagare|fattura|bolletta|dovuto))\\s*[:=€]?\\s*[€$]?\\s*' + amt, 'i'),
+    new RegExp('(?:importo\\s*totale)\\s*[:=€]?\\s*[€$]?\\s*' + amt, 'i'),
+    // Scontrini - pattern specifici
+    new RegExp('(?:totale\\s*(?:euro|eur|complessivo|vendita|reparto))\\s*[:=€]?\\s*[€$]?\\s*' + amt, 'i'),
+    new RegExp('(?:tot\\.?\\s*(?:euro|eur|complessivo)?)\\s*[:=€]?\\s*[€$]?\\s*' + amt, 'i'),
+    new RegExp('(?:contante|contanti|carta|bancomat|pos|pagamento|pagato|corrispettivo|corrispettivi|resto)\\s*[:=€]?\\s*[€$]?\\s*' + amt, 'i'),
+    new RegExp('(?:importo\\s*(?:pagato|dovuto)?)\\s*[:=€]?\\s*[€$]?\\s*' + amt, 'i'),
+    new RegExp('(?:totale|total|tot\\.?)\\s*[:=€]?\\s*[€$]?\\s*' + amt, 'i'),
+    new RegExp('(?:pagare|dovuto)\\s*[:=€]?\\s*[€$]?\\s*' + amt, 'i'),
+    // Simbolo € con importo
+    new RegExp('[€]\\s*' + amt),
+    new RegExp(amt + '\\s*[€]'),
+    // EUR/EURO con importo
+    new RegExp('(?:eur(?:o)?)\\s*[:=]?\\s*' + amt, 'i'),
+    new RegExp(amt + '\\s*(?:eur(?:o)?)', 'i'),
   ]
   for (const p of importoPatterns) {
-    const m = text.match(p)
-    if (m) { result.importo = m[1].replace(',','.'); break }
+    const m = cleanText.match(p)
+    if (m) { result.importo = m[1] + '.' + m[2].padEnd(2,'0'); break }
   }
-  // Cerca date
+  // Fallback: se nessun pattern ha matchato, cerca l'ultimo importo grande nel testo (tipico degli scontrini: il totale è l'ultimo importo)
+  if (!result.importo) {
+    const allAmounts = [...cleanText.matchAll(/(\d{1,6})\s*[.,]\s*(\d{1,2})(?!\d)/g)]
+    if (allAmounts.length) {
+      // Prendi il più grande tra gli ultimi 3 importi trovati (il totale è spesso l'ultimo o il più grande)
+      const candidates = allAmounts.slice(-3).map(m => ({ val: parseFloat(m[1]+'.'+m[2].padEnd(2,'0')), int: m[1], dec: m[2] }))
+      const best = candidates.reduce((a,b) => a.val > b.val ? a : b)
+      if (best.val >= 0.5) result.importo = best.int + '.' + best.dec.padEnd(2,'0')
+    }
+  }
+  // Cerca date (più formati, anche con spazi OCR)
   const dataPatterns = [
-    /(\d{2})[\/\-.](\d{2})[\/\-.](\d{4})/,
-    /(\d{2})[\/\-.](\d{2})[\/\-.](\d{2})/,
+    /(\d{2})\s*[\/\-.\s]\s*(\d{2})\s*[\/\-.\s]\s*(\d{4})/,
+    /(\d{2})\s*[\/\-.\s]\s*(\d{2})\s*[\/\-.\s]\s*(\d{2})(?!\d)/,
+    /(\d{1,2})\s+(gen(?:naio)?|feb(?:braio)?|mar(?:zo)?|apr(?:ile)?|mag(?:gio)?|giu(?:gno)?|lug(?:lio)?|ago(?:sto)?|set(?:tembre)?|ott(?:obre)?|nov(?:embre)?|dic(?:embre)?)\s+(\d{2,4})/i,
   ]
+  const mesiMap = {gen:'01',gennaio:'01',feb:'02',febbraio:'02',mar:'03',marzo:'03',apr:'04',aprile:'04',mag:'05',maggio:'05',giu:'06',giugno:'06',lug:'07',luglio:'07',ago:'08',agosto:'08',set:'09',settembre:'09',ott:'10',ottobre:'10',nov:'11',novembre:'11',dic:'12',dicembre:'12'}
   for (const p of dataPatterns) {
-    const m = text.match(p)
+    const m = cleanText.match(p)
     if (m) {
-      const anno = m[3].length===2 ? '20'+m[3] : m[3]
-      result.data = `${anno}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`
+      if (mesiMap[m[2]?.toLowerCase()]) {
+        result.data = `${m[3]}-${mesiMap[m[2].toLowerCase()]}-${m[1].padStart(2,'0')}`
+      } else {
+        const anno = m[3].length===2 ? '20'+m[3] : m[3]
+        result.data = `${anno}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`
+      }
       break
     }
   }
+  // Cerca periodo bolletta
+  const periodoPattern = /(?:periodo|competenza|fornitura)\s*[:=]?\s*(.+)/i
+  const pm = text.match(periodoPattern)
+  if (pm) result.periodo = pm[1].trim().slice(0,50)
+  // Cerca fornitore bolletta
+  const fornitori = ['enel','eni','edison','a2a','iren','hera','acea','sorgenia','illumia','plenitude','fastweb','tim','vodafone','windtre','sky']
+  const tl = text.toLowerCase()
+  for (const f of fornitori) {
+    if (tl.includes(f)) { result.fornitore = f.charAt(0).toUpperCase()+f.slice(1); break }
+  }
+  // Rileva tipo bolletta
+  if (/\b(luce|elettric|energia\s*elettrica|kWh)\b/i.test(text)) result.tipoBolletta = 'luce'
+  else if (/\b(gas|metano|smc|m[³3])\b/i.test(text)) result.tipoBolletta = 'gas'
+  else if (/\b(acqua|idric|m[³3])\b/i.test(text)) result.tipoBolletta = 'acqua'
   return result
+}
+
+// Suggerimenti budget intelligenti
+function suggerimentiIntelligenti(data) {
+  const sugg = []
+  const meseCorr = mc()
+  const mesePrev = mp()
+  const spMese = data.spese.filter(s=>s.data?.startsWith(meseCorr))
+  const totCorr = sum(spMese, s=>+s.importo)
+  const totPrev = totMese(data.spese, mesePrev)
+  const giorniPassati = new Date().getDate()
+  const giorniNelMese = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate()
+  const velocitaGiorno = giorniPassati > 0 ? totCorr / giorniPassati : 0
+  const proiezione = velocitaGiorno * giorniNelMese
+  const entrate = getStipendioMese(data, meseCorr)
+
+  // Analisi per categoria - confronto storico
+  const ultimi3 = [0,1,2].map(i => { const d=new Date(); d.setMonth(d.getMonth()-i); return d.toISOString().slice(0,7) })
+  const perCatCorr = {}
+  const perCatMedia = {}
+  spMese.forEach(s => { perCatCorr[s.categoria] = (perCatCorr[s.categoria]||0) + +s.importo })
+  data.categorieSpese.forEach(cat => {
+    const vals = ultimi3.slice(1).map(m => sum(data.spese.filter(s=>s.data?.startsWith(m)&&s.categoria===cat), s=>+s.importo))
+    const media = vals.length > 0 ? vals.reduce((a,b)=>a+b,0)/vals.length : 0
+    if (media > 0) perCatMedia[cat] = media
+  })
+
+  // Suggerimento: categoria in aumento
+  Object.entries(perCatCorr).forEach(([cat, val]) => {
+    const media = perCatMedia[cat]
+    if (media && val > media * 1.3 && val > 30) {
+      sugg.push({ tipo:'warning', icon:'fa-solid fa-arrow-trend-up', color:'#F59E0B',
+        testo:`${cat}: € ${val.toFixed(0)} (+${((val-media)/media*100).toFixed(0)}% rispetto alla media)`,
+        azione:`Riduci di € ${(val-media).toFixed(0)} per tornare alla media` })
+    }
+  })
+
+  // Suggerimento: categoria sotto la media
+  Object.entries(perCatCorr).forEach(([cat, val]) => {
+    const media = perCatMedia[cat]
+    if (media && val < media * 0.7 && media > 30) {
+      sugg.push({ tipo:'success', icon:'fa-solid fa-arrow-trend-down', color:'#10B981',
+        testo:`${cat}: € ${val.toFixed(0)} (-${((media-val)/media*100).toFixed(0)}% rispetto alla media)`,
+        azione:'Ottimo lavoro! Continua così' })
+    }
+  })
+
+  // Suggerimento: proiezione fine mese
+  if (proiezione > data.budget * 1.1 && giorniPassati >= 5) {
+    const risparmioNeeded = proiezione - data.budget
+    const budgetGiornaliero = (data.budget - totCorr) / (giorniNelMese - giorniPassati)
+    sugg.push({ tipo:'danger', icon:'fa-solid fa-triangle-exclamation', color:'#EF4444',
+      testo:`Proiezione: € ${proiezione.toFixed(0)} (budget € ${data.budget})`,
+      azione:`Riduci a € ${Math.max(0,budgetGiornaliero).toFixed(0)}/giorno per restare in budget` })
+  }
+
+  // Suggerimento: risparmio possibile
+  if (entrate > 0 && totCorr < entrate * 0.5 && giorniPassati >= 15) {
+    const risparmio = entrate - proiezione
+    if (risparmio > 100) {
+      sugg.push({ tipo:'info', icon:'fa-solid fa-piggy-bank', color:'#3B82F6',
+        testo:`Potresti risparmiare ~ € ${risparmio.toFixed(0)} questo mese`,
+        azione:'Considera di aumentare gli accantonamenti' })
+    }
+  }
+
+  // Suggerimento: spesa ricorrente non registrata
+  const mancanti = ricorrentiMancanti(data.spese, meseCorr)
+  if (mancanti.length > 0 && giorniPassati >= 10) {
+    sugg.push({ tipo:'info', icon:'fa-solid fa-repeat', color:'#8B5CF6',
+      testo:`${mancanti.length} spese ricorrenti mancanti questo mese`,
+      azione:mancanti.map(m=>m.descrizione).join(', ') })
+  }
+
+  return sugg
+}
+
+// Genera file .ics per calendario
+function generaICS(data) {
+  const escape = s => (s||'').replace(/[\\;,]/g, c => '\\'+c).replace(/\n/g, '\\n')
+  let ics = 'BEGIN:VCALENDAR\\nVERSION:2.0\\nPRODID:-//Casa Nostra//Dashboard//IT\\nCALSCALE:GREGORIAN\\n'
+
+  // Scadenze attive
+  data.scadenze.filter(s=>!s.gestita).forEach(s => {
+    const dt = (s.data||'').replace(/-/g,'')
+    ics += 'BEGIN:VEVENT\\n'
+    ics += `DTSTART;VALUE=DATE:${dt}\\n`
+    ics += `DTEND;VALUE=DATE:${dt}\\n`
+    ics += `SUMMARY:📅 ${escape(s.nome)}\\n`
+    ics += `DESCRIPTION:${escape(s.categoria||'')}${s.importoStimato ? ' - €'+s.importoStimato : ''}${s.note ? '\\n'+escape(s.note) : ''}\\n`
+    ics += 'BEGIN:VALARM\\nTRIGGER:-P3D\\nACTION:DISPLAY\\nDESCRIPTION:Scadenza tra 3 giorni\\nEND:VALARM\\n'
+    ics += 'BEGIN:VALARM\\nTRIGGER:-P1D\\nACTION:DISPLAY\\nDESCRIPTION:Scadenza domani\\nEND:VALARM\\n'
+    ics += 'END:VEVENT\\n'
+  })
+
+  // Attività non completate con data
+  data.attivita.filter(a=>!a.completata).forEach(a => {
+    const dt = new Date().toISOString().slice(0,10).replace(/-/g,'')
+    ics += 'BEGIN:VTODO\\n'
+    ics += `DTSTART;VALUE=DATE:${dt}\\n`
+    ics += `SUMMARY:✅ ${escape(a.testo)}\\n`
+    ics += `DESCRIPTION:${escape(a.stanza||'')} - Priorità: ${a.priorita||'Media'}\\n`
+    ics += `PRIORITY:${a.priorita==='Alta'?1:a.priorita==='Bassa'?9:5}\\n`
+    ics += 'END:VTODO\\n'
+  })
+
+  ics += 'END:VCALENDAR'
+
+  // Fix: replace literal \\n with actual newlines
+  ics = ics.replace(/\\n/g, '\\r\\n')
+
+  const blob = new Blob([ics], { type:'text/calendar;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  Object.assign(document.createElement('a'), { href:url, download:'casa-nostra.ics' }).click()
+  URL.revokeObjectURL(url)
+}
+
+// Gestione foto allegati (base64)
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
 }
 
 // PDF Report Generation
@@ -965,6 +1163,31 @@ function HomeTab({ data, setTab, updateData }) {
         </div>
       )}
 
+      {/* Suggerimenti Budget Intelligenti */}
+      {(()=>{
+        const sugg = suggerimentiIntelligenti(data)
+        if (sugg.length === 0) return null
+        return (
+          <div style={{...S.card,marginBottom:16,border:`1px solid ${t.accent}22`}}>
+            <h3 style={{margin:'0 0 10px',fontSize:14,fontWeight:700,color:t.text}}>
+              <Fa icon='fa-solid fa-wand-magic-sparkles' style={{marginRight:6,color:t.accent}} />Suggerimenti Intelligenti
+            </h3>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {sugg.map((s,i)=>(
+                <motion.div key={i} initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{delay:i*0.1}}
+                  style={{padding:'10px 12px',background:s.color+'10',borderRadius:10,borderLeft:`3px solid ${s.color}`}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                    <Fa icon={s.icon} style={{color:s.color,fontSize:13}} />
+                    <span style={{fontSize:13,fontWeight:600,color:s.color}}>{s.testo}</span>
+                  </div>
+                  <p style={{margin:0,fontSize:11,color:t.textSec,paddingLeft:21}}>{s.azione}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Quick actions */}
       <div style={{display:'flex',gap:mob?6:10,marginBottom:16,flexWrap:'wrap'}}>
         {[
@@ -1279,7 +1502,9 @@ function SpeseTab({ data, updateData }) {
   const [editId, setEditId]         = useState(null)
   const [ocrLoading, setOcrLoading] = useState(false)
   const [showSplitQuote, setShowSplitQuote] = useState(false)
+  const [fotoPreview, setFotoPreview] = useState(null)
   const ocrInputRef = useRef(null)
+  const fotoInputRef = useRef(null)
 
   const validate = () => {
     const e = {}
@@ -1297,9 +1522,25 @@ function SpeseTab({ data, updateData }) {
     try {
       const Tess = await loadTesseract()
       const { data: { text } } = await Tess.recognize(file, 'ita+eng')
+      console.log('[OCR] Testo riconosciuto:', text)
       const parsed = parseOCR(text)
-      setForm(f => ({ ...f, ...(parsed.importo ? { importo: parsed.importo } : {}), ...(parsed.data ? { data: parsed.data } : {}) }))
-      toast(parsed.importo ? `Rilevato: € ${parsed.importo}` : 'Nessun importo rilevato, controlla manualmente', parsed.importo ? 'success' : 'info')
+      console.log('[OCR] Risultato parsing:', parsed)
+      const updates = {}
+      if (parsed.importo) updates.importo = parsed.importo
+      if (parsed.data) updates.data = parsed.data
+      if (parsed.tipoBolletta) {
+        updates.categoria = 'Bollette'
+        updates.descrizione = `${parsed.fornitore?parsed.fornitore+' - ':''}Bolletta ${parsed.tipoBolletta}${parsed.periodo?' ('+parsed.periodo+')':''}`
+      }
+      setForm(f => ({ ...f, ...updates }))
+      // Salva foto dello scontrino
+      try { const b64 = await readFileAsBase64(file); setFotoPreview(b64) } catch {}
+      const msgs = []
+      if (parsed.importo) msgs.push(`€ ${parsed.importo}`)
+      if (parsed.data) msgs.push(`data ${parsed.data}`)
+      if (parsed.tipoBolletta) msgs.push(`bolletta ${parsed.tipoBolletta}`)
+      if (parsed.fornitore) msgs.push(parsed.fornitore)
+      toast(msgs.length ? `Rilevato: ${msgs.join(' · ')}` : 'Nessun importo rilevato – prova con foto più nitida', msgs.length ? 'success' : 'info')
     } catch {
       toast('Errore durante la scansione', 'error')
     }
@@ -1307,14 +1548,33 @@ function SpeseTab({ data, updateData }) {
     if (ocrInputRef.current) ocrInputRef.current.value = ''
   }
 
+  const handleFoto = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const b64 = await readFileAsBase64(file)
+      setFotoPreview(b64)
+      toast('Foto allegata')
+    } catch { toast('Errore', 'error') }
+    if (fotoInputRef.current) fotoInputRef.current.value = ''
+  }
+
   const aggiungi = () => {
     if (!validate()) return
+    const newId = editId || Date.now()
     if (editId) {
       updateData('spese', data.spese.map(s=>s.id===editId?{...s, descrizione:form.descrizione.trim(), importo:+form.importo, categoria:form.categoria, data:form.data, ricorrente:form.ricorrente, pagatoDa:form.pagatoDa, condivisa:form.condivisa, contattoId:form.contattoId||undefined, conto:form.conto||undefined, stanza:form.stanza||undefined, splitQuote:form.condivisa&&Object.keys(form.splitQuote||{}).length?form.splitQuote:undefined}:s))
       toast('Spesa aggiornata')
     } else {
-      updateData('spese', [...data.spese, { ...form, importo:+form.importo, id:Date.now(), contattoId:form.contattoId||undefined, conto:form.conto||undefined, stanza:form.stanza||undefined, splitQuote:form.condivisa&&Object.keys(form.splitQuote||{}).length?form.splitQuote:undefined }])
+      updateData('spese', [...data.spese, { ...form, importo:+form.importo, id:newId, contattoId:form.contattoId||undefined, conto:form.conto||undefined, stanza:form.stanza||undefined, splitQuote:form.condivisa&&Object.keys(form.splitQuote||{}).length?form.splitQuote:undefined }])
       toast('Spesa aggiunta')
+    }
+    // Salva foto se presente
+    if (fotoPreview) {
+      const fa = {...(data.fotoAllegati||{})}
+      fa[`spesa-${newId}`] = fotoPreview
+      updateData('fotoAllegati', fa)
+      setFotoPreview(null)
     }
     setForm(formDefault); setEditId(null); setErrors({})
   }
@@ -1458,6 +1718,11 @@ function SpeseTab({ data, updateData }) {
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
             <h3 style={{margin:0,fontSize:16,fontWeight:600,color:t.text}}>{editId ? 'Modifica spesa' : '+ Nuova spesa'}</h3>
             <div style={{display:'flex',gap:6}}>
+              <motion.button whileTap={{scale:0.9}} onClick={()=>fotoInputRef.current?.click()}
+                style={{padding:'6px 12px',background:'#10B98115',border:'none',borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:600,color:'#10B981',display:'flex',alignItems:'center',gap:4}}>
+                <Fa icon='fa-solid fa-paperclip' /> Foto
+              </motion.button>
+              <input ref={fotoInputRef} type="file" accept="image/*" capture="environment" onChange={handleFoto} style={{display:'none'}} />
               <motion.button whileTap={{scale:0.9}} onClick={()=>ocrInputRef.current?.click()} disabled={ocrLoading}
                 style={{padding:'6px 12px',background:'#8B5CF615',border:'none',borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:600,color:'#8B5CF6',display:'flex',alignItems:'center',gap:4}}>
                 {ocrLoading ? <><Fa icon='fa-solid fa-spinner fa-spin' /> Scansione...</> : <><Fa icon='fa-solid fa-camera' /> Scontrino</>}
@@ -1528,8 +1793,16 @@ function SpeseTab({ data, updateData }) {
               ) : <p style={{margin:0,fontSize:12,color:t.textMut}}>Diviso equamente ({Math.round(100/data.membrifamiglia.length)}% ciascuno)</p>}
             </div>
           )}
+          {/* Foto allegata */}
+          {fotoPreview && (
+            <div style={{marginBottom:12,position:'relative',display:'inline-block'}}>
+              <img src={fotoPreview} alt="Allegato" style={{maxWidth:'100%',maxHeight:120,borderRadius:10,border:`1px solid ${t.border}`}} />
+              <motion.button whileTap={{scale:0.8}} onClick={()=>setFotoPreview(null)}
+                style={{position:'absolute',top:-8,right:-8,width:22,height:22,borderRadius:'50%',background:'#EF4444',color:'white',border:'none',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center'}}>×</motion.button>
+            </div>
+          )}
           <div style={{display:'flex',gap:8}}>
-            <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#3B82F6'),flex:1}}>{editId ? 'Aggiorna' : 'Aggiungi spesa'}</motion.button>
+            <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn(t.accent),flex:1}}>{editId ? 'Aggiorna' : 'Aggiungi spesa'}</motion.button>
             {editId && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px'}}>Annulla</motion.button>}
           </div>
         </div>
@@ -2414,6 +2687,105 @@ function AnalyticsTab({ data }) {
           </div>
         )
       })()}
+
+      {/* Confronto mese su mese */}
+      {(()=>{
+        const ultMesi = Array.from({length:6},(_,i)=>{const d=new Date();d.setMonth(d.getMonth()-i);return d.toISOString().slice(0,7)})
+        const confronti = []
+        for(let i=0;i<ultMesi.length-1;i++){
+          const curr=ultMesi[i],prev=ultMesi[i+1]
+          const tCurr=totMese(data.spese,curr),tPrev=totMese(data.spese,prev)
+          if(tCurr===0&&tPrev===0) continue
+          const diff=tCurr-tPrev
+          const pct=tPrev>0?((diff/tPrev)*100):0
+          // Per categoria
+          const catDiff=[]
+          data.categorieSpese.forEach(cat=>{
+            const c=sum(data.spese.filter(s=>s.data?.startsWith(curr)&&s.categoria===cat),s=>+s.importo)
+            const p=sum(data.spese.filter(s=>s.data?.startsWith(prev)&&s.categoria===cat),s=>+s.importo)
+            if(c>0||p>0) catDiff.push({cat,curr:c,prev:p,diff:c-p,pct:p>0?((c-p)/p*100):c>0?100:0})
+          })
+          confronti.push({curr,prev,tCurr,tPrev,diff,pct,catDiff:catDiff.sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff)).slice(0,5)})
+        }
+        if(confronti.length===0) return null
+        return (
+          <div style={S.card}>
+            <h3 style={{margin:'0 0 14px',fontSize:15,fontWeight:600,color:t.text}}>
+              <Fa icon='fa-solid fa-arrows-left-right' style={{marginRight:6}} />Confronto Mese su Mese
+            </h3>
+            <div style={{display:'flex',flexDirection:'column',gap:12}}>
+              {confronti.slice(0,4).map((c,ci)=>{
+                const mCurr=MESI[+c.curr.slice(5,7)-1]
+                const mPrev=MESI[+c.prev.slice(5,7)-1]
+                const up=c.diff>0
+                return (
+                  <motion.div key={ci} initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{delay:ci*0.1}}
+                    style={{padding:14,background:t.rowBg,borderRadius:12}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                      <span style={{fontSize:14,fontWeight:600,color:t.text}}>{mCurr} vs {mPrev}</span>
+                      <span style={{fontSize:13,fontWeight:700,color:up?'#EF4444':'#10B981',display:'flex',alignItems:'center',gap:4}}>
+                        <Fa icon={up?'fa-solid fa-arrow-trend-up':'fa-solid fa-arrow-trend-down'} style={{fontSize:11}} />
+                        {up?'+':''}{c.pct.toFixed(0)}% ({up?'+':''}€{c.diff.toFixed(0)})
+                      </span>
+                    </div>
+                    <div style={{display:'flex',gap:8,marginBottom:8}}>
+                      <div style={{flex:1,padding:8,background:t.cardBg,borderRadius:8,textAlign:'center'}}>
+                        <p style={{margin:0,fontSize:16,fontWeight:700,color:t.text}}>€ {c.tCurr.toFixed(0)}</p>
+                        <p style={{margin:0,fontSize:10,color:t.textMut}}>{mCurr}</p>
+                      </div>
+                      <div style={{flex:1,padding:8,background:t.cardBg,borderRadius:8,textAlign:'center'}}>
+                        <p style={{margin:0,fontSize:16,fontWeight:700,color:t.textSec}}>€ {c.tPrev.toFixed(0)}</p>
+                        <p style={{margin:0,fontSize:10,color:t.textMut}}>{mPrev}</p>
+                      </div>
+                    </div>
+                    {c.catDiff.length>0 && (
+                      <div style={{display:'flex',flexDirection:'column',gap:3}}>
+                        <p style={{margin:0,fontSize:10,fontWeight:600,color:t.textMut,textTransform:'uppercase',letterSpacing:0.5}}>Variazioni principali</p>
+                        {c.catDiff.map(cd=>(
+                          <div key={cd.cat} style={{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:12}}>
+                            <div style={{display:'flex',alignItems:'center',gap:6}}>
+                              <div style={{width:6,height:6,borderRadius:'50%',background:catCol(cd.cat)}} />
+                              <span style={{color:t.textSec}}>{cd.cat}</span>
+                            </div>
+                            <span style={{fontWeight:600,color:cd.diff>0?'#EF4444':cd.diff<0?'#10B981':t.textMut}}>
+                              {cd.diff>0?'+':''}€ {cd.diff.toFixed(0)} ({cd.pct>0?'+':''}{cd.pct.toFixed(0)}%)
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </motion.div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Trend per categoria top 5 */}
+      {trendCat.length>0 && (
+        <div style={S.card}>
+          <h3 style={{margin:'0 0 14px',fontSize:15,fontWeight:600,color:t.text}}>
+            <Fa icon='fa-solid fa-chart-line' style={{marginRight:6}} />Trend per Categoria
+          </h3>
+          <ResponsiveContainer width="100%" height={mob?220:280}>
+            <LineChart data={mesiAnno.map((m,i)=>{
+              const row = {name:MESI[i]}
+              trendCat.forEach(tc => { row[tc.cat] = tc.data[i]?.value || 0 })
+              return row
+            })}>
+              <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false} />
+              <XAxis dataKey="name" tick={{fontSize:11,fill:t.textMut}} axisLine={false} tickLine={false} />
+              <YAxis tick={{fontSize:10,fill:t.textMut}} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8}} formatter={v=>`€ ${v}`} />
+              <Legend wrapperStyle={{fontSize:11}} />
+              {trendCat.map((tc,i) => (
+                <Line key={tc.cat} type="monotone" dataKey={tc.cat} stroke={catCol(tc.cat)} strokeWidth={2} dot={false} />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   )
 }
@@ -3475,8 +3847,194 @@ function AccantonamentiTab({ data, updateData }) {
   )
 }
 
+// ── LISTA DELLA SPESA ─────────────────────────────────────────────────────────
+function ListaSpesaTab({ data, updateData }) {
+  const t = useT(); const S = makeS(t); const toast = useToast()
+  const w = useWindowWidth(); const mob = w < 768
+  const [nome, setNome] = useState('')
+  const [quantita, setQuantita] = useState('1')
+  const [unita, setUnita] = useState('pz')
+  const [categoria, setCategoria] = useState('Altro')
+  const [prezzo, setPrezzo] = useState('')
+  const [filtro, setFiltro] = useState('tutti')
+
+  const lista = data.listaSpesa || []
+
+  const aggiungi = () => {
+    if (!nome.trim()) return
+    const item = {
+      id: Date.now() + (Math.random()*1000|0),
+      nome: nome.trim(),
+      quantita: +quantita || 1,
+      unita,
+      categoria,
+      prezzo: +prezzo || 0,
+      completato: false,
+      creatoIl: new Date().toISOString().slice(0,10),
+    }
+    updateData('listaSpesa', [...lista, item])
+    setNome(''); setQuantita('1'); setPrezzo('')
+    toast('Aggiunto alla lista')
+  }
+
+  const toggle = (id) => {
+    updateData('listaSpesa', lista.map(x => x.id === id ? {...x, completato: !x.completato} : x))
+  }
+
+  const rimuovi = (id) => {
+    updateData('listaSpesa', lista.filter(x => x.id !== id))
+  }
+
+  const pulisciCompletati = () => {
+    const completati = lista.filter(x => x.completato)
+    if (completati.length === 0) return
+    // Converti in spesa se hanno prezzo
+    const conPrezzo = completati.filter(x => x.prezzo > 0)
+    if (conPrezzo.length > 0) {
+      const totale = sum(conPrezzo, x => x.prezzo * x.quantita)
+      const nuovaSpesa = {
+        id: Date.now(),
+        descrizione: `Spesa: ${conPrezzo.map(x=>x.nome).join(', ').slice(0,60)}`,
+        importo: totale,
+        categoria: 'Spesa',
+        data: new Date().toISOString().slice(0,10),
+        pagatoDa: data.membrifamiglia[0] || '',
+      }
+      updateData('spese', [...data.spese, nuovaSpesa])
+      toast(`Spesa di € ${totale.toFixed(2)} registrata`)
+    }
+    updateData('listaSpesa', lista.filter(x => !x.completato))
+  }
+
+  const filtrati = filtro === 'tutti' ? lista
+    : filtro === 'attivi' ? lista.filter(x => !x.completato)
+    : filtro === 'completati' ? lista.filter(x => x.completato)
+    : lista.filter(x => x.categoria === filtro)
+
+  const perCategoria = {}
+  filtrati.forEach(x => { perCategoria[x.categoria] = (perCategoria[x.categoria] || []).concat(x) })
+
+  const totale = lista.filter(x => !x.completato).reduce((s,x) => s + (x.prezzo||0) * x.quantita, 0)
+  const completati = lista.filter(x => x.completato).length
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:16}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+        <h2 style={{margin:0,fontSize:mob?16:18,fontWeight:700,color:t.text}}><Fa icon='fa-solid fa-cart-shopping' style={{marginRight:6,color:t.accent}} />Lista della Spesa</h2>
+        {completati > 0 && (
+          <motion.button whileTap={{scale:0.95}} onClick={pulisciCompletati}
+            style={{padding:'6px 14px',background:'#10B981',color:'white',border:'none',borderRadius:8,fontSize:12,fontWeight:600,cursor:'pointer'}}>
+            <Fa icon='fa-solid fa-broom' style={{marginRight:4}} />Archivia {completati} completat{completati===1?'o':'i'}
+          </motion.button>
+        )}
+      </div>
+
+      {/* Form */}
+      <div style={{...S.card}}>
+        <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr auto auto auto',gap:8,alignItems:'end'}}>
+          <FormField label="Prodotto">
+            <Inp value={nome} onChange={e=>setNome(e.target.value)} placeholder="Es. Latte, Pane..." style={{width:'100%'}}
+              onKeyDown={e=>e.key==='Enter'&&aggiungi()} />
+          </FormField>
+          <div style={{display:'flex',gap:6}}>
+            <FormField label="Qtà">
+              <Inp type="number" value={quantita} onChange={e=>setQuantita(e.target.value)} style={{width:60}} min="1" />
+            </FormField>
+            <FormField label="Unità">
+              <Sel value={unita} onChange={e=>setUnita(e.target.value)}
+                options={['pz','kg','g','L','mL','conf'].map(u=>({value:u,label:u}))}
+                style={{...S.input,width:70}} />
+            </FormField>
+          </div>
+          <FormField label="Prezzo (€)">
+            <Inp type="number" value={prezzo} onChange={e=>setPrezzo(e.target.value)} placeholder="0.00" style={{width:80}} step="0.01" />
+          </FormField>
+        </div>
+        <div style={{display:'flex',gap:8,marginTop:8,alignItems:'center'}}>
+          <Sel value={categoria} onChange={e=>setCategoria(e.target.value)}
+            options={LISTA_SPESA_CAT.map(c=>({value:c,label:c}))}
+            style={{...S.input,flex:1}} placeholder="Categoria" />
+          <motion.button whileTap={{scale:0.95}} onClick={aggiungi}
+            style={{...S.btn(t.accent),width:'auto',padding:'10px 20px',marginTop:0}}>
+            <Fa icon='fa-solid fa-plus' style={{marginRight:4}} />Aggiungi
+          </motion.button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
+        <div style={{...S.card,padding:12,textAlign:'center'}}>
+          <p style={{margin:0,fontSize:20,fontWeight:700,color:t.accent}}>{lista.filter(x=>!x.completato).length}</p>
+          <p style={{margin:0,fontSize:11,color:t.textMut}}>Da comprare</p>
+        </div>
+        <div style={{...S.card,padding:12,textAlign:'center'}}>
+          <p style={{margin:0,fontSize:20,fontWeight:700,color:'#10B981'}}>{completati}</p>
+          <p style={{margin:0,fontSize:11,color:t.textMut}}>Completati</p>
+        </div>
+        <div style={{...S.card,padding:12,textAlign:'center'}}>
+          <p style={{margin:0,fontSize:20,fontWeight:700,color:'#F59E0B'}}>€ {totale.toFixed(2)}</p>
+          <p style={{margin:0,fontSize:11,color:t.textMut}}>Stima totale</p>
+        </div>
+      </div>
+
+      {lista.length > 0 && <ProgBar pct={(completati/lista.length)*100} color='#10B981' />}
+
+      {/* Filtri */}
+      <div style={{display:'flex',gap:4,overflowX:'auto',paddingBottom:4}}>
+        {['tutti','attivi','completati',...LISTA_SPESA_CAT].map(f => (
+          <motion.button key={f} whileTap={{scale:0.93}} onClick={()=>setFiltro(f)}
+            style={S.smallBtn(filtro===f,t.accent)}>{f==='tutti'?'Tutti':f==='attivi'?'Da fare':f==='completati'?'Fatti':f}</motion.button>
+        ))}
+      </div>
+
+      {/* Lista per categoria */}
+      {Object.entries(perCategoria).sort().map(([cat, items]) => (
+        <div key={cat}>
+          <p style={{margin:'0 0 6px',fontSize:12,fontWeight:700,color:t.textSec,textTransform:'uppercase',letterSpacing:0.5}}>
+            {cat} ({items.length})
+          </p>
+          <AnimatePresence>
+            {items.map(item => (
+              <motion.div key={item.id} layout variants={ITEM_V} initial="initial" animate="animate" exit="exit"
+                style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:t.cardBg,borderRadius:10,marginBottom:6,boxShadow:t.shadow,
+                  opacity:item.completato?0.5:1,transition:'opacity 0.2s'}}>
+                <motion.button whileTap={{scale:0.8}} onClick={()=>toggle(item.id)}
+                  style={{width:26,height:26,borderRadius:8,border:`2px solid ${item.completato?'#10B981':t.border}`,background:item.completato?'#10B981':'transparent',
+                    display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0}}>
+                  {item.completato && <Fa icon='fa-solid fa-check' style={{color:'white',fontSize:12}} />}
+                </motion.button>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{margin:0,fontSize:14,fontWeight:500,color:t.text,textDecoration:item.completato?'line-through':'none'}}>
+                    {item.nome}
+                  </p>
+                  <p style={{margin:0,fontSize:11,color:t.textMut}}>
+                    {item.quantita} {item.unita}
+                    {item.prezzo > 0 && ` · € ${(item.prezzo * item.quantita).toFixed(2)}`}
+                  </p>
+                </div>
+                <motion.button whileTap={{scale:0.8}} onClick={()=>rimuovi(item.id)}
+                  style={{background:'none',border:'none',cursor:'pointer',color:'#EF4444',fontSize:14,padding:4,flexShrink:0}}>
+                  <Fa icon='fa-solid fa-trash' />
+                </motion.button>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      ))}
+
+      {lista.length === 0 && (
+        <div style={{textAlign:'center',padding:40,color:t.textMut}}>
+          <Fa icon='fa-solid fa-cart-shopping' style={{fontSize:48,marginBottom:12,opacity:0.3}} />
+          <p style={{margin:0,fontSize:14}}>La lista è vuota</p>
+          <p style={{margin:'4px 0 0',fontSize:12}}>Aggiungi prodotti per iniziare</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── IMPOSTAZIONI (categorie, backup, ecc.) ────────────────────────────────────
-function ImpostazioniTab({ data, updateData, onResetSetup }) {
+function ImpostazioniTab({ data, updateData, onResetSetup, user, onLogout }) {
   const t = useT(); const S = makeS(t); const toast = useToast()
   const w = useWindowWidth(); const mob = w < 768
   const [nuovaCatSpese, setNuovaCatSpese]       = useState('')
@@ -3602,6 +4160,61 @@ function ImpostazioniTab({ data, updateData, onResetSetup }) {
         {data.ultimoBackup && <p style={{margin:'8px 0 0',fontSize:11,color:t.textMut}}>Ultimo backup: {new Date(data.ultimoBackup).toLocaleString('it-IT')}</p>}
       </div>
 
+      {/* Colore Accento */}
+      <div style={{...S.card,marginBottom:16}}>
+        <h3 style={{margin:'0 0 12px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-palette' style={{marginRight:6}} />Colore accento</h3>
+        <p style={{margin:'0 0 10px',fontSize:13,color:t.textSec}}>Personalizza il colore principale dell'app</p>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(80px,1fr))',gap:8}}>
+          {ACCENT_COLORS.map(ac => {
+            const active = (data.accentColor||'#3B82F6') === ac.value
+            return (
+              <motion.button key={ac.value} whileTap={{scale:0.9}} onClick={()=>updateData('accentColor',ac.value)}
+                style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,padding:'12px 8px',
+                  background:active?ac.value+'18':t.tagBg, border:active?`2px solid ${ac.value}`:'2px solid transparent',
+                  borderRadius:12,cursor:'pointer',transition:'all 0.15s'}}>
+                <div style={{width:28,height:28,borderRadius:'50%',background:ac.value,boxShadow:active?`0 0 12px ${ac.value}60`:'none'}} />
+                <span style={{fontSize:11,fontWeight:active?700:500,color:active?ac.value:t.textSec}}>{ac.label}</span>
+              </motion.button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Esporta Calendario */}
+      <div style={{...S.card,marginBottom:16}}>
+        <h3 style={{margin:'0 0 12px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-calendar-plus' style={{marginRight:6}} />Integrazione Calendario</h3>
+        <p style={{margin:'0 0 10px',fontSize:13,color:t.textSec}}>Esporta scadenze e attività nel calendario del telefono</p>
+        <motion.button whileTap={{scale:0.95}} onClick={()=>{generaICS(data);toast('File .ics scaricato — aprilo per importare nel calendario')}}
+          style={{width:'100%',padding:'12px',background:t.accent,color:'white',border:'none',borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer'}}>
+          <Fa icon='fa-solid fa-download' style={{marginRight:6}} />Esporta .ics (Apple/Google Calendar)
+        </motion.button>
+        <p style={{margin:'8px 0 0',fontSize:11,color:t.textMut}}>
+          <Fa icon='fa-solid fa-circle-info' style={{marginRight:4}} />
+          {data.scadenze.filter(s=>!s.gestita).length} scadenze + {data.attivita.filter(a=>!a.completata).length} attività verranno esportate
+        </p>
+      </div>
+
+      {/* Account */}
+      {user && (
+        <div style={S.card}>
+          <h3 style={{margin:'0 0 12px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-user-circle' style={{marginRight:6}} />Account</h3>
+          <div style={{display:'flex',alignItems:'center',gap:12,padding:14,background:t.tagBg,borderRadius:12,marginBottom:12}}>
+            <div style={{width:40,height:40,borderRadius:'50%',background:'#3B82F615',border:'2px solid #3B82F6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:700,color:'#3B82F6'}}>
+              {user.email[0].toUpperCase()}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:14,fontWeight:600,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user.email}</div>
+              <div style={{fontSize:11,color:t.textMut}}>Dati sincronizzati con il cloud</div>
+            </div>
+            <div style={{width:8,height:8,borderRadius:'50%',background:'#10B981',boxShadow:'0 0 6px #10B98160'}} />
+          </div>
+          <motion.button whileTap={{scale:0.95}} onClick={()=>{if(confirm('Vuoi disconnetterti? I dati locali verranno rimossi.')) onLogout()}}
+            style={{padding:'10px 20px',background:'#EF4444',color:'white',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
+            <Fa icon='fa-solid fa-right-from-bracket' style={{marginRight:6}} />Disconnetti
+          </motion.button>
+        </div>
+      )}
+
       <div style={S.card}>
         <h3 style={{margin:'0 0 12px',fontSize:15,fontWeight:600,color:t.text}}>Dati</h3>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
@@ -3613,6 +4226,113 @@ function ImpostazioniTab({ data, updateData, onResetSetup }) {
             style={{padding:'10px 20px',background:'#3B82F6',color:'white',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}><Fa icon='fa-solid fa-wand-magic-sparkles' style={{marginRight:6}} />Setup guidato</motion.button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── AUTH SCREEN ──────────────────────────────────────────────────────────────
+function AuthScreen({ onAuth }) {
+  const [mode, setMode] = useState('login') // login | register
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  const theme = THEMES.light
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!email.trim() || !password) { setError('Compila tutti i campi'); return }
+    if (password.length < 6) { setError('La password deve avere almeno 6 caratteri'); return }
+    setLoading(true); setError(''); setSuccess('')
+    try {
+      if (mode === 'register') {
+        const { data, error: err } = await supabase.auth.signUp({ email: email.trim(), password })
+        if (err) { setError(err.message); setLoading(false); return }
+        if (data?.user) {
+          // Crea il record dati per il nuovo utente
+          await supabase.from('dashboard_data').upsert({ id: data.user.id, data: {}, updated_at: new Date().toISOString() })
+          onAuth(data.user, true)
+        }
+      } else {
+        const { data, error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+        if (err) { setError(err.message === 'Invalid login credentials' ? 'Email o password non validi' : err.message); setLoading(false); return }
+        if (data?.user) onAuth(data.user, false)
+      }
+    } catch (ex) { setError('Errore di connessione') }
+    setLoading(false)
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #EFF6FF 0%, #F8FAFC 50%, #F0FDF4 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: '-apple-system,BlinkMacSystemFont,Inter,Segoe UI,sans-serif' }}>
+      <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
+        style={{ background: 'white', borderRadius: 20, padding: 32, maxWidth: 420, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.08)' }}>
+
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}><Fa icon="fa-solid fa-house-chimney" style={{ color: '#3B82F6' }} /></div>
+          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#1E293B' }}>Casa Nostra</h2>
+          <p style={{ margin: '8px 0 0', fontSize: 14, color: '#64748B' }}>
+            {mode === 'login' ? 'Accedi per sincronizzare i tuoi dati' : 'Crea un account per iniziare'}
+          </p>
+        </div>
+
+        {/* Tab Login/Registrati */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: '#F1F5F9', borderRadius: 10, padding: 3 }}>
+          {['login', 'register'].map(m => (
+            <button key={m} onClick={() => { setMode(m); setError(''); setSuccess('') }}
+              style={{ flex: 1, padding: '10px', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+                background: mode === m ? 'white' : 'transparent', color: mode === m ? '#1E293B' : '#94A3B8',
+                boxShadow: mode === m ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
+              {m === 'login' ? 'Accedi' : 'Registrati'}
+            </button>
+          ))}
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#64748B', marginBottom: 6, display: 'block' }}>
+              <Fa icon="fa-solid fa-envelope" style={{ marginRight: 6 }} />Email
+            </label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="la-tua@email.com"
+              autoComplete="email"
+              style={{ width: '100%', padding: '12px 14px', border: '1px solid #E2E8F0', borderRadius: 10, fontSize: 15, outline: 'none', boxSizing: 'border-box', transition: 'border 0.2s' }}
+              onFocus={e => e.target.style.borderColor = '#3B82F6'} onBlur={e => e.target.style.borderColor = '#E2E8F0'} />
+          </div>
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#64748B', marginBottom: 6, display: 'block' }}>
+              <Fa icon="fa-solid fa-lock" style={{ marginRight: 6 }} />Password
+            </label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder={mode === 'register' ? 'Minimo 6 caratteri' : '••••••'}
+              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              style={{ width: '100%', padding: '12px 14px', border: '1px solid #E2E8F0', borderRadius: 10, fontSize: 15, outline: 'none', boxSizing: 'border-box', transition: 'border 0.2s' }}
+              onFocus={e => e.target.style.borderColor = '#3B82F6'} onBlur={e => e.target.style.borderColor = '#E2E8F0'} />
+          </div>
+
+          {error && (
+            <div style={{ padding: '10px 14px', background: '#FEF2F2', borderRadius: 8, fontSize: 13, color: '#EF4444', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Fa icon="fa-solid fa-circle-exclamation" />{error}
+            </div>
+          )}
+          {success && (
+            <div style={{ padding: '10px 14px', background: '#F0FDF4', borderRadius: 8, fontSize: 13, color: '#10B981', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Fa icon="fa-solid fa-circle-check" />{success}
+            </div>
+          )}
+
+          <motion.button type="submit" whileTap={{ scale: 0.97 }} disabled={loading}
+            style={{ padding: '14px', background: loading ? '#94A3B8' : '#3B82F6', color: 'white', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: loading ? 'default' : 'pointer', marginTop: 4 }}>
+            {loading ? <><Fa icon="fa-solid fa-spinner fa-spin" style={{ marginRight: 8 }} />Caricamento...</> :
+              mode === 'login' ? <><Fa icon="fa-solid fa-right-to-bracket" style={{ marginRight: 8 }} />Accedi</> :
+              <><Fa icon="fa-solid fa-user-plus" style={{ marginRight: 8 }} />Crea account</>}
+          </motion.button>
+        </form>
+
+        <div style={{ textAlign: 'center', marginTop: 20, fontSize: 12, color: '#94A3B8' }}>
+          <Fa icon="fa-solid fa-shield-halved" style={{ marginRight: 4 }} />
+          I tuoi dati sono protetti e criptati
+        </div>
+      </motion.div>
     </div>
   )
 }
@@ -3972,7 +4692,9 @@ function SetupWizard({ onComplete }) {
 export default function DashboardCasa() {
   const [tab, setTab]   = useState('home')
   const [data, setData] = useState(INITIAL)
-  const [setupDone, setSetupDone] = useState(() => !!localStorage.getItem('dashboard-casa'))
+  const [setupDone, setSetupDone] = useState(false)
+  const [user, setUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const importRef       = useRef(null)
   const [showMembri, setShowMembri] = useState(false)
   const [nuovoMembro, setNuovoMembro] = useState('')
@@ -3985,6 +4707,9 @@ export default function DashboardCasa() {
   const [historyIdx, setHistoryIdx] = useState(-1)
   const skipHistory = useRef(false)
   const [mobileMore, setMobileMore] = useState(false)
+  const [syncStatus, setSyncStatus] = useState('idle') // idle | syncing | ok | error
+  const syncTimer = useRef(null)
+  const lastSynced = useRef(null)
   const w = useWindowWidth(); const mob = w < 768
 
   const toast = useCallback((msg, type='success') => {
@@ -3998,11 +4723,66 @@ export default function DashboardCasa() {
     setSetupDone(true)
   }, [])
 
-  // Persistence
-  useEffect(() => {
-    try { const s = localStorage.getItem('dashboard-casa'); if (s) setData({...INITIAL,...JSON.parse(s)}) } catch {}
+  const handleAuth = useCallback((u, isNew = false) => {
+    setUser(u)
+    setAuthLoading(false)
+    if (isNew) {
+      setData(INITIAL)
+      setSetupDone(false)
+    }
   }, [])
-  useEffect(() => { localStorage.setItem('dashboard-casa', JSON.stringify(data)) }, [data])
+
+  const handleLogout = useCallback(async () => {
+    await supabase.auth.signOut()
+    setUser(null)
+    setData(INITIAL)
+    setSetupDone(false)
+  }, [])
+
+  // Check existing session on mount
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) setUser(session.user)
+      setAuthLoading(false)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // Carica dati da Supabase
+  useEffect(() => {
+    if (!user) return
+    const loadData = async () => {
+      try {
+        setSyncStatus('syncing')
+        const { data: row, error } = await supabase.from('dashboard_data').select('data, updated_at').eq('id', user.id).single()
+        if (!error && row?.data && Object.keys(row.data).length > 0) {
+          setData({ ...INITIAL, ...row.data })
+          setSetupDone(true)
+        }
+        setSyncStatus('ok')
+        lastSynced.current = Date.now()
+      } catch { setSyncStatus('error') }
+    }
+    loadData()
+  }, [user])
+
+  // Salva su Supabase (debounced)
+  useEffect(() => {
+    if (!user) return
+    if (syncTimer.current) clearTimeout(syncTimer.current)
+    syncTimer.current = setTimeout(async () => {
+      try {
+        setSyncStatus('syncing')
+        const { error } = await supabase.from('dashboard_data').upsert({ id: user.id, data, updated_at: new Date().toISOString() })
+        setSyncStatus(error ? 'error' : 'ok')
+        if (!error) lastSynced.current = Date.now()
+      } catch { setSyncStatus('error') }
+    }, 2000)
+    return () => { if (syncTimer.current) clearTimeout(syncTimer.current) }
+  }, [data, user])
 
   // Undo/Redo history
   useEffect(() => {
@@ -4192,7 +4972,8 @@ export default function DashboardCasa() {
     toast('Membro rinominato')
   }
 
-  const theme = data.darkMode ? THEMES.dark : THEMES.light
+  const dynamicThemes = makeThemes(data.accentColor || '#3B82F6')
+  const theme = data.darkMode ? dynamicThemes.dark : dynamicThemes.light
   const S     = makeS(theme)
 
   const sAlert  = data.scadenze.filter(s=>{if(s.gestita)return false; const g=Math.ceil((new Date(s.data)-new Date())/864e5); return g<0||g<=7}).length
@@ -4213,6 +4994,7 @@ export default function DashboardCasa() {
     {id:'contatti',   label:<><Fa icon="fa-solid fa-address-book" /> Contatti</>,    color:dk?'#22D3EE':'#06B6D4'},
     {id:'inventario', label:<><Fa icon="fa-solid fa-box-open" /> Inventario</>,  color:dk?'#A78BFA':'#8B5CF6', badge:garAlert, badgeColor:'#F59E0B'},
     {id:'accantonamenti', label:<><Fa icon="fa-solid fa-piggy-bank" /> Accantonamenti</>, color:dk?'#38BDF8':'#0EA5E9'},
+    {id:'listaSpesa',  label:<><Fa icon="fa-solid fa-cart-shopping" /> Lista Spesa</>, color:dk?'#34D399':'#10B981'},
     {id:'impostazioni', label:<><Fa icon="fa-solid fa-gear" /> Impostazioni</>, color:dk?'#94A3B8':'#64748B'},
   ]
 
@@ -4228,13 +5010,23 @@ export default function DashboardCasa() {
   const moreIcons = {
     stipendio:'fa-solid fa-briefcase', consumi:'fa-solid fa-bolt', calendario:'fa-regular fa-calendar',
     note:'fa-regular fa-note-sticky', contatti:'fa-solid fa-address-book', inventario:'fa-solid fa-box-open',
-    accantonamenti:'fa-solid fa-piggy-bank', impostazioni:'fa-solid fa-gear',
+    accantonamenti:'fa-solid fa-piggy-bank', listaSpesa:'fa-solid fa-cart-shopping', impostazioni:'fa-solid fa-gear',
   }
   const moreLabels = {
     stipendio:'Stipendio', consumi:'Consumi', calendario:'Calendario', note:'Note',
-    contatti:'Contatti', inventario:'Inventario', accantonamenti:'Risparmi', impostazioni:'Impostazioni',
+    contatti:'Contatti', inventario:'Inventario', accantonamenti:'Risparmi', listaSpesa:'Lista', impostazioni:'Impostazioni',
   }
 
+  if (authLoading) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC', fontFamily: '-apple-system,sans-serif' }}>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ textAlign: 'center' }}>
+        <Fa icon="fa-solid fa-spinner fa-spin" style={{ fontSize: 32, color: '#3B82F6', marginBottom: 12 }} />
+        <p style={{ color: '#64748B', fontSize: 14 }}>Caricamento...</p>
+      </motion.div>
+    </div>
+  )
+
+  if (!user) return <AuthScreen onAuth={handleAuth} />
   if (!setupDone) return <SetupWizard onComplete={handleSetupComplete} />
 
   return (
@@ -4246,6 +5038,7 @@ export default function DashboardCasa() {
         @media(max-width:767px){
           input,select,textarea{font-size:16px !important}
         }
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
       `}</style>
       <div style={{minHeight:'100vh',background:theme.bg,fontFamily:'system-ui,-apple-system,sans-serif',color:theme.text}}>
         {/* HEADER */}
@@ -4259,6 +5052,11 @@ export default function DashboardCasa() {
                 {new Date().toLocaleDateString('it-IT',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}
               </p>}
             </div>
+            <div title={syncStatus==='ok'?'Sincronizzato con il cloud':syncStatus==='syncing'?'Sincronizzazione...':syncStatus==='error'?'Errore di sync':'In attesa'}
+              style={{width:mob?8:10,height:mob?8:10,borderRadius:'50%',flexShrink:0,
+                background:syncStatus==='ok'?'#10B981':syncStatus==='syncing'?'#F59E0B':syncStatus==='error'?'#EF4444':'#94A3B8',
+                boxShadow:`0 0 6px ${syncStatus==='ok'?'#10B98160':syncStatus==='syncing'?'#F59E0B60':syncStatus==='error'?'#EF444460':'transparent'}`,
+                animation:syncStatus==='syncing'?'pulse 1.2s infinite':'none'}} />
           </div>
 
           <div style={{display:'flex',alignItems:'center',gap:mob?6:8,flexWrap:'nowrap',justifyContent:'flex-end'}}>
@@ -4367,7 +5165,8 @@ export default function DashboardCasa() {
               {tab==='contatti'    && <ContattiTab   data={data} updateData={updateData} />}
               {tab==='inventario'  && <InventarioTab data={data} updateData={updateData} />}
               {tab==='accantonamenti' && <AccantonamentiTab data={data} updateData={updateData} />}
-              {tab==='impostazioni'&& <ImpostazioniTab data={data} updateData={updateData} onResetSetup={()=>setSetupDone(false)} />}
+              {tab==='listaSpesa'  && <ListaSpesaTab data={data} updateData={updateData} />}
+              {tab==='impostazioni'&& <ImpostazioniTab data={data} updateData={updateData} onResetSetup={()=>setSetupDone(false)} user={user} onLogout={handleLogout} />}
             </motion.div>
           </AnimatePresence>
         </main>
@@ -4533,7 +5332,7 @@ export default function DashboardCasa() {
       </AnimatePresence>
 
       {/* Toasts */}
-      <div style={{position:'fixed',top:mob?10:20,right:mob?10:20,zIndex:2000,display:'flex',flexDirection:'column',gap:8,pointerEvents:'none'}}>
+      <div style={{position:'fixed',top:mob?'calc(env(safe-area-inset-top, 0px) + 56px)':'calc(env(safe-area-inset-top, 0px) + 68px)',right:mob?10:20,zIndex:2000,display:'flex',flexDirection:'column',gap:8,pointerEvents:'none'}}>
         <AnimatePresence>
           {toasts.map(t=>(
             <motion.div key={t.id} initial={{opacity:0,x:60,scale:0.9}} animate={{opacity:1,x:0,scale:1}} exit={{opacity:0,x:60,scale:0.9}} transition={{duration:0.22}}
