@@ -2823,6 +2823,7 @@ function AnalyticsTab({ data }) {
 function CalendarioTab({ data, updateData }) {
   const t = useT(); const S = makeS(t); const toast = useToast()
   const w = useWindowWidth(); const mob = w < 768
+  const dk = data.darkMode
   const [anno, setAnno] = useState(new Date().getFullYear())
   const [mese, setMese] = useState(new Date().getMonth())
   const [selGiorno, setSelGiorno] = useState(null)
@@ -2891,14 +2892,14 @@ function CalendarioTab({ data, updateData }) {
                 onClick={()=>setSelGiorno(day===selGiorno?null:day)}
                 style={{
                   textAlign:'center',padding:mob?4:8,borderRadius:mob?6:10,cursor:'pointer',
-                  background: selected?'#3B82F6':isToday?'#EFF6FF':heat||t.cardBg,
-                  border: isToday&&!selected?'2px solid #3B82F6':`2px solid ${selected?'#3B82F6':'transparent'}`,
+                  background: selected?t.accent:isToday?(dk?'#1E3A5F':'#EFF6FF'):heat||t.cardBg,
+                  border: isToday&&!selected?`2px solid ${t.accent}`:`2px solid ${selected?t.accent:'transparent'}`,
                   color: selected?'white':t.text, fontWeight:isToday?700:400, fontSize:14, minHeight:48,
                   display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,
                 }}>
                 <span>{day}</span>
                 <div style={{display:'flex',gap:3}}>
-                  {hasSp && <div style={{width:5,height:5,borderRadius:'50%',background:selected?'white':'#3B82F6'}} />}
+                  {hasSp && <div style={{width:5,height:5,borderRadius:'50%',background:selected?'white':t.accent}} />}
                   {hasSc && <div style={{width:5,height:5,borderRadius:'50%',background:selected?'white':'#F59E0B'}} />}
                   {hasAt && <div style={{width:5,height:5,borderRadius:'50%',background:selected?'white':'#10B981'}} />}
                 </div>
