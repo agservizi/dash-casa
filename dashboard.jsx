@@ -1297,7 +1297,7 @@ function HomeTab({ data, setTab, updateData }) {
                   <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false} />
                   <XAxis dataKey="name" tick={{fontSize:11,fill:t.textMut}} axisLine={false} tickLine={false} />
                   <YAxis tick={{fontSize:11,fill:t.textMut}} axisLine={false} tickLine={false} />
-                  <Tooltip formatter={v=>[`€ ${v}`,'Spese']} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8}} />
+                  <Tooltip formatter={v=>[`€ ${v}`,'Spese']} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8,color:t.text}} labelStyle={{color:t.text}} itemStyle={{color:t.textSec}} />
                   <Bar dataKey="Spese" fill="#3B82F6" radius={[5,5,0,0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -1432,7 +1432,7 @@ function HomeTab({ data, setTab, updateData }) {
                       <CartesianGrid strokeDasharray="3 3" stroke={t.border} />
                       <XAxis dataKey="label" tick={{fontSize:10,fill:t.textMut}} interval={Math.max(0,Math.floor(flusso.length/5)-1)} />
                       <YAxis tick={{fontSize:10,fill:t.textMut}} tickFormatter={v=>`€${v}`} width={55} />
-                      <Tooltip formatter={v=>`€ ${v}`} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8,fontSize:12}} />
+                      <Tooltip formatter={v=>`€ ${v}`} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8,fontSize:12,color:t.text}} labelStyle={{color:t.text}} itemStyle={{color:t.textSec}} />
                       <Area type="monotone" dataKey="saldo" stroke="#3B82F6" fill="#3B82F620" strokeWidth={2} />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -1845,7 +1845,7 @@ function SpeseTab({ data, updateData }) {
                   <Pie data={perCat} cx="50%" cy="50%" innerRadius={46} outerRadius={74} paddingAngle={3} dataKey="value">
                     {perCat.map((e,i)=><Cell key={i} fill={catCol(e.name)} />)}
                   </Pie>
-                  <Tooltip formatter={v=>`€ ${v}`} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8}} />
+                  <Tooltip formatter={v=>`€ ${v}`} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8,color:t.text}} labelStyle={{color:t.text}} itemStyle={{color:t.textSec}} />
                 </PieChart>
               </ResponsiveContainer>
               <div style={{display:'flex',flexDirection:'column',gap:4}}>
@@ -2415,7 +2415,7 @@ function ConsumiTab({ data, updateData }) {
                   <CartesianGrid strokeDasharray="3 3" stroke={t.border} />
                   <XAxis dataKey="name" tick={{fontSize:11,fill:t.textMut}} />
                   <YAxis tick={{fontSize:11,fill:t.textMut}} />
-                  <Tooltip formatter={(v,n)=>[`€ ${v}`,n]} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8}} />
+                  <Tooltip formatter={(v,n)=>[`€ ${v}`,n]} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8,color:t.text}} labelStyle={{color:t.text}} itemStyle={{color:t.textSec}} />
                   <Legend />
                   <Line type="monotone" dataKey="Luce"   stroke="#F59E0B" strokeWidth={2} dot={{r:4}} activeDot={{r:6}} />
                   <Line type="monotone" dataKey="Gas"    stroke="#EF4444" strokeWidth={2} dot={{r:4}} activeDot={{r:6}} />
@@ -2632,7 +2632,7 @@ function AnalyticsTab({ data }) {
                 <Pie data={perCatAnno} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
                   {perCatAnno.map((e,i)=><Cell key={i} fill={catCol(e.name)} />)}
                 </Pie>
-                <Tooltip formatter={v=>`€ ${v}`} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8}} />
+                <Tooltip formatter={v=>`€ ${v}`} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8,color:t.text}} labelStyle={{color:t.text}} itemStyle={{color:t.textSec}} />
               </PieChart>
             </ResponsiveContainer>
             <div style={{display:'flex',flexDirection:'column',gap:4}}>
@@ -2707,7 +2707,7 @@ function AnalyticsTab({ data }) {
                 <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false} />
                 <XAxis dataKey="name" tick={{fontSize:11,fill:t.textMut}} axisLine={false} tickLine={false} />
                 <YAxis tick={{fontSize:11,fill:t.textMut}} axisLine={false} tickLine={false} />
-                <Tooltip formatter={v=>[`€ ${v}`]} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8}} />
+                <Tooltip formatter={v=>[`€ ${v}`]} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8,color:t.text}} labelStyle={{color:t.text}} itemStyle={{color:t.textSec}} />
                 <Legend wrapperStyle={{fontSize:12}} />
                 <Bar dataKey="Stipendio" fill="#059669" radius={[4,4,0,0]} />
                 <Bar dataKey="Spese" fill="#EF4444" radius={[4,4,0,0]} />
@@ -2806,7 +2806,7 @@ function AnalyticsTab({ data }) {
               <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false} />
               <XAxis dataKey="name" tick={{fontSize:11,fill:t.textMut}} axisLine={false} tickLine={false} />
               <YAxis tick={{fontSize:10,fill:t.textMut}} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8}} formatter={v=>`€ ${v}`} />
+              <Tooltip contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8,color:t.text}} labelStyle={{color:t.text}} itemStyle={{color:t.textSec}} formatter={v=>`€ ${v}`} />
               <Legend wrapperStyle={{fontSize:11}} />
               {trendCat.map((tc,i) => (
                 <Line key={tc.cat} type="monotone" dataKey={tc.cat} stroke={catCol(tc.cat)} strokeWidth={2} dot={false} />
@@ -3448,7 +3448,7 @@ function StipendioTab({ data, updateData }) {
                 <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false} />
                 <XAxis dataKey="name" tick={{fontSize:11,fill:t.textMut}} axisLine={false} tickLine={false} />
                 <YAxis tick={{fontSize:11,fill:t.textMut}} axisLine={false} tickLine={false} />
-                <Tooltip formatter={v => [`€ ${v}`]} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8}} />
+                <Tooltip formatter={v => [`€ ${v}`]} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8,color:t.text}} labelStyle={{color:t.text}} itemStyle={{color:t.textSec}} />
                 <Legend wrapperStyle={{fontSize:12}} />
                 <Bar dataKey="Stipendio" fill="#3B82F6" radius={[5,5,0,0]} />
                 <Bar dataKey="Spese" fill="#EF4444" radius={[5,5,0,0]} />
@@ -3856,7 +3856,7 @@ function AccantonamentiTab({ data, updateData }) {
                 <Pie data={accantonamenti.map(a => ({name:a.nome, value:a.accantonato || 0}))} cx="50%" cy="50%" innerRadius={46} outerRadius={74} paddingAngle={3} dataKey="value">
                   {accantonamenti.map((a, i) => <Cell key={i} fill={colTipo[a.tipo] || EXTRA_COLORS[i % EXTRA_COLORS.length]} />)}
                 </Pie>
-                <Tooltip formatter={v => `€ ${v.toFixed(2)}`} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8}} />
+                <Tooltip formatter={v => `€ ${v.toFixed(2)}`} contentStyle={{background:t.cardBg,border:`1px solid ${t.border}`,borderRadius:8,color:t.text}} labelStyle={{color:t.text}} itemStyle={{color:t.textSec}} />
               </PieChart>
             </ResponsiveContainer>
             <div style={{display:'flex',flexDirection:'column',gap:4}}>
