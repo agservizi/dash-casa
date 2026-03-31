@@ -20,8 +20,10 @@ public class WidgetBridgePlugin extends Plugin {
         SharedPreferences prefs = context.getSharedPreferences("CasaNostraWidget", Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
 
-        editor.putFloat("speseMese", (float) call.getDouble("speseMese", 0.0));
-        editor.putFloat("budget", (float) call.getDouble("budget", 0.0));
+        Double speseMese = call.getDouble("speseMese", 0.0);
+        Double budget = call.getDouble("budget", 0.0);
+        editor.putFloat("speseMese", speseMese != null ? speseMese.floatValue() : 0f);
+        editor.putFloat("budget", budget != null ? budget.floatValue() : 0f);
         editor.putString("scadenza1", call.getString("scadenza1", ""));
         editor.putString("scadenza2", call.getString("scadenza2", ""));
         editor.putString("scadenza3", call.getString("scadenza3", ""));
