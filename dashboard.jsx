@@ -345,6 +345,8 @@ const INITIAL = {
   listaSpesa:[],
   accentColor:'#3B82F6',
   fotoAllegati:{},
+  pinLock:'', // PIN a 4 cifre, '' = disabilitato
+  onboardingDone:false,
 }
 
 // ── THEMES ─────────────────────────────────────────────────────────────────────
@@ -4267,6 +4269,46 @@ function ImpostazioniTab({ data, updateData, onResetSetup, user, onLogout }) {
         </p>
       </div>
 
+      {/* PIN Lock */}
+      <div style={S.card}>
+        <h3 style={{margin:'0 0 12px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-lock' style={{marginRight:6}} />Blocco PIN</h3>
+        <p style={{margin:'0 0 12px',fontSize:13,color:t.textSec}}>Proteggi l'accesso all'app con un PIN di 4 cifre</p>
+        {data.pinLock ? (
+          <>
+            <div style={{display:'flex',alignItems:'center',gap:10,padding:12,background:'#10B98115',borderRadius:10,marginBottom:12}}>
+              <Fa icon='fa-solid fa-shield-halved' style={{color:'#10B981',fontSize:18}} />
+              <span style={{fontSize:13,fontWeight:600,color:'#10B981'}}>PIN attivo</span>
+            </div>
+            <motion.button whileTap={{scale:0.95}} onClick={()=>{if(confirm('Vuoi disattivare il blocco PIN?')){updateData('pinLock','')}}}
+              style={{width:'100%',padding:'12px',background:'#EF4444',color:'white',border:'none',borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer'}}>
+              <Fa icon='fa-solid fa-lock-open' style={{marginRight:6}} />Disattiva PIN
+            </motion.button>
+          </>
+        ) : (
+          <>
+            <div style={{display:'flex',gap:8,marginBottom:8}}>
+              {[0,1,2,3].map(i=>(
+                <input key={i} id={`pin-set-${i}`} type="password" inputMode="numeric" maxLength={1}
+                  style={{width:48,height:48,textAlign:'center',fontSize:22,fontWeight:700,border:`2px solid ${t.inputBorder}`,borderRadius:12,background:t.inputBg,color:t.text,outline:'none'}}
+                  onFocus={e=>e.target.select()}
+                  onChange={e=>{
+                    const v=e.target.value.replace(/\D/g,'');
+                    e.target.value=v;
+                    if(v&&i<3) document.getElementById(`pin-set-${i+1}`)?.focus();
+                    if(i===3&&v){
+                      const pin=[0,1,2,3].map(j=>document.getElementById(`pin-set-${j}`).value).join('');
+                      if(pin.length===4){updateData('pinLock',pin);toast('PIN impostato!');[0,1,2,3].forEach(j=>document.getElementById(`pin-set-${j}`).value='')}
+                    }
+                  }}
+                  onKeyDown={e=>{if(e.key==='Backspace'&&!e.target.value&&i>0) document.getElementById(`pin-set-${i-1}`)?.focus()}}
+                />
+              ))}
+            </div>
+            <p style={{margin:0,fontSize:11,color:t.textMut}}>Inserisci 4 cifre per attivare il blocco PIN</p>
+          </>
+        )}
+      </div>
+
       {/* Account */}
       {user && (
         <div style={S.card}>
@@ -4407,6 +4449,134 @@ function AuthScreen({ onAuth }) {
         </div>
       </motion.div>
     </div>
+  )
+}
+
+// ── PIN LOCK SCREEN ──────────────────────────────────────────────────────────
+function PinLockScreen({ onUnlock }) {
+  const [pin, setPin] = useState('')
+  const [error, setError] = useState(false)
+  const [shake, setShake] = useState(false)
+
+  const addDigit = (d) => {
+    if (pin.length >= 4) return
+    const next = pin + d
+    setPin(next)
+    setError(false)
+    if (next.length === 4) {
+      setTimeout(() => onUnlock(next), 200)
+    }
+  }
+  const del = () => { setPin(prev => prev.slice(0, -1)); setError(false) }
+  const triggerError = () => { setShake(true); setError(true); setPin(''); setTimeout(() => setShake(false), 500) }
+
+  // Expose triggerError via ref-like callback
+  useEffect(() => { window.__pinError = triggerError; return () => { delete window.__pinError } })
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#0F172A', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: '-apple-system,sans-serif', padding: 20 }}>
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} style={{ textAlign: 'center', width: '100%', maxWidth: 320 }}>
+        <Fa icon="fa-solid fa-lock" style={{ fontSize: 40, color: '#3B82F6', marginBottom: 16 }} />
+        <h2 style={{ color: '#F1F5F9', fontSize: 22, fontWeight: 700, margin: '0 0 8px' }}>Inserisci PIN</h2>
+        <p style={{ color: '#64748B', fontSize: 14, margin: '0 0 28px' }}>Inserisci il PIN a 4 cifre per accedere</p>
+
+        <motion.div animate={shake ? { x: [-16, 16, -12, 12, -6, 6, 0] } : {}} transition={{ duration: 0.4 }}
+          style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 36 }}>
+          {[0, 1, 2, 3].map(i => (
+            <motion.div key={i} animate={pin.length > i ? { scale: [1, 1.3, 1] } : {}} transition={{ duration: 0.15 }}
+              style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${error ? '#EF4444' : '#3B82F6'}`,
+                background: pin.length > i ? (error ? '#EF4444' : '#3B82F6') : 'transparent', transition: 'all 0.15s' }} />
+          ))}
+        </motion.div>
+
+        {error && <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 16 }}>PIN errato, riprova</p>}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, maxWidth: 260, margin: '0 auto' }}>
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9, null, 0, 'del'].map((d, i) => {
+            if (d === null) return <div key={i} />
+            if (d === 'del') return (
+              <motion.button key="del" whileTap={{ scale: 0.85 }} onClick={del}
+                style={{ width: 72, height: 72, borderRadius: '50%', border: 'none', background: '#1E293B', cursor: 'pointer', fontSize: 22, color: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Fa icon="fa-solid fa-delete-left" />
+              </motion.button>
+            )
+            return (
+              <motion.button key={d} whileTap={{ scale: 0.85 }} onClick={() => addDigit(String(d))}
+                style={{ width: 72, height: 72, borderRadius: '50%', border: 'none', background: '#1E293B', cursor: 'pointer', fontSize: 26, fontWeight: 600, color: '#F1F5F9', transition: 'background 0.15s' }}
+                onMouseDown={e => e.currentTarget.style.background = '#334155'} onMouseUp={e => e.currentTarget.style.background = '#1E293B'}>
+                {d}
+              </motion.button>
+            )
+          })}
+        </div>
+
+        {navigator.credentials && window.PublicKeyCredential && (
+          <motion.button whileTap={{ scale: 0.95 }} onClick={() => onUnlock('__biometric__')}
+            style={{ marginTop: 24, padding: '12px 24px', background: '#1E293B', border: '1px solid #334155', borderRadius: 12, cursor: 'pointer', color: '#94A3B8', fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8, margin: '24px auto 0' }}>
+            <Fa icon="fa-solid fa-fingerprint" style={{ fontSize: 20, color: '#3B82F6' }} /> Usa biometria
+          </motion.button>
+        )}
+      </motion.div>
+    </div>
+  )
+}
+
+// ── ONBOARDING TUTORIAL ──────────────────────────────────────────────────────
+function OnboardingOverlay({ onComplete }) {
+  const [step, setStep] = useState(0)
+  const steps = [
+    { icon: 'fa-solid fa-house-chimney', color: '#3B82F6', title: 'Benvenuto in Casa Nostra!', desc: 'La dashboard completa per gestire la tua casa. Ecco una panoramica delle funzionalità principali.' },
+    { icon: 'fa-solid fa-wallet', color: '#3B82F6', title: 'Gestisci le Spese', desc: 'Registra tutte le spese familiari, assegnale ai membri, scansiona scontrini con OCR e tieni il budget sotto controllo.' },
+    { icon: 'fa-regular fa-calendar-check', color: '#F59E0B', title: 'Scadenze & Promemoria', desc: 'Non dimenticare mai una bolletta o una scadenza. Ricevi notifiche in anticipo e gestisci pagamenti ricorrenti.' },
+    { icon: 'fa-solid fa-chart-pie', color: '#8B5CF6', title: 'Analytics & Report', desc: 'Visualizza grafici dettagliati, confronta le spese tra mesi e scarica report PDF o CSV.' },
+    { icon: 'fa-solid fa-users', color: '#10B981', title: 'Tutta la Famiglia', desc: 'Ogni membro può contribuire. I dati si sincronizzano automaticamente tra web e app Android.' },
+    { icon: 'fa-solid fa-cloud', color: '#06B6D4', title: 'Sincronizzazione Cloud', desc: 'I tuoi dati sono salvati nel cloud. Accedi da qualsiasi dispositivo con le stesse credenziali.' },
+    { icon: 'fa-solid fa-rocket', color: '#EF4444', title: 'Tutto pronto!', desc: 'Inizia a usare Casa Nostra. Puoi sempre rivedere le impostazioni dal tab dedicato. Buona gestione!' },
+  ]
+  const s = steps[step]
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: '-apple-system,sans-serif', backdropFilter: 'blur(8px)' }}>
+      <motion.div key={step} initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ duration: 0.3 }}
+        style={{ background: '#1E293B', borderRadius: 24, padding: 36, maxWidth: 420, width: '100%', textAlign: 'center', boxShadow: '0 24px 80px rgba(0,0,0,0.4)' }}>
+
+        {/* Progress dots */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginBottom: 28 }}>
+          {steps.map((_, i) => (
+            <div key={i} style={{ width: i === step ? 24 : 8, height: 8, borderRadius: 4, background: i === step ? s.color : '#475569', transition: 'all 0.3s' }} />
+          ))}
+        </div>
+
+        <motion.div animate={{ scale: [1, 1.15, 1] }} transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+          style={{ width: 80, height: 80, borderRadius: 20, background: s.color + '20', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+          <Fa icon={s.icon} style={{ fontSize: 36, color: s.color }} />
+        </motion.div>
+
+        <h2 style={{ color: '#F1F5F9', fontSize: 22, fontWeight: 800, margin: '0 0 12px' }}>{s.title}</h2>
+        <p style={{ color: '#94A3B8', fontSize: 15, lineHeight: 1.6, margin: '0 0 32px' }}>{s.desc}</p>
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+          {step > 0 && (
+            <motion.button whileTap={{ scale: 0.95 }} onClick={() => setStep(step - 1)}
+              style={{ padding: '12px 24px', background: '#334155', color: '#94A3B8', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+              <Fa icon="fa-solid fa-arrow-left" style={{ marginRight: 6 }} />Indietro
+            </motion.button>
+          )}
+          <motion.button whileTap={{ scale: 0.95 }} onClick={() => step < steps.length - 1 ? setStep(step + 1) : onComplete()}
+            style={{ padding: '12px 32px', background: s.color, color: 'white', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer', flex: 1, maxWidth: 200 }}>
+            {step < steps.length - 1 ? <>Avanti <Fa icon="fa-solid fa-arrow-right" style={{ marginLeft: 6 }} /></> : <>Inizia <Fa icon="fa-solid fa-rocket" style={{ marginLeft: 6 }} /></>}
+          </motion.button>
+        </div>
+
+        {step < steps.length - 1 && (
+          <button onClick={onComplete}
+            style={{ marginTop: 16, background: 'none', border: 'none', color: '#64748B', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>
+            Salta tutorial
+          </button>
+        )}
+      </motion.div>
+    </motion.div>
   )
 }
 
@@ -4768,6 +4938,8 @@ export default function DashboardCasa() {
   const [setupDone, setSetupDone] = useState(false)
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
+  const [pinUnlocked, setPinUnlocked] = useState(false)
+  const [showOnboarding, setShowOnboarding] = useState(false)
   const importRef       = useRef(null)
   const [showMembri, setShowMembri] = useState(false)
   const [nuovoMembro, setNuovoMembro] = useState('')
@@ -4795,6 +4967,7 @@ export default function DashboardCasa() {
   const handleSetupComplete = useCallback(async (realData) => {
     setData(realData)
     setSetupDone(true)
+    setShowOnboarding(true) // Mostra tutorial dopo il primo setup
     dataLoaded.current = true
     // Salva subito su Supabase senza aspettare il debounce
     if (user) {
@@ -5063,6 +5236,37 @@ export default function DashboardCasa() {
     }
   }, [])
 
+  // Android Widget sync — aggiorna i dati del widget quando cambiano spese/budget/scadenze
+  useEffect(() => {
+    if (!window.Capacitor?.isNativePlatform?.()) return
+    try {
+      const meseCorr = mc()
+      const speseMese = totMese(data.spese, meseCorr)
+      const prossime = data.scadenze.filter(s=>!s.gestita).sort((a,b)=>new Date(a.data)-new Date(b.data)).slice(0,3)
+      const oggi = new Date()
+      const fmt = s => {
+        const gg = Math.ceil((new Date(s.data)-oggi)/864e5)
+        const quando = gg<0?'scaduta':gg===0?'oggi':gg===1?'domani':`tra ${gg}g`
+        return `${s.nome} — ${quando}`
+      }
+      window.Capacitor.Plugins.WidgetBridge?.updateWidget({
+        speseMese, budget: data.budget||0,
+        scadenza1: prossime[0]?fmt(prossime[0]):'',
+        scadenza2: prossime[1]?fmt(prossime[1]):'',
+        scadenza3: prossime[2]?fmt(prossime[2]):'',
+      })
+    } catch(e) { /* widget non disponibile su web */ }
+  }, [data.spese, data.budget, data.scadenze])
+
+  // iOS PWA install banner
+  const [showIOSInstall, setShowIOSInstall] = useState(false)
+  useEffect(() => {
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone
+    const dismissed = sessionStorage.getItem('ios-install-dismissed')
+    if (isIOS && !isStandalone && !dismissed) setShowIOSInstall(true)
+  }, [])
+
   const importJSON = (e) => {
     const file = e.target.files?.[0]; if(!file) return
     const reader = new FileReader()
@@ -5160,10 +5364,24 @@ export default function DashboardCasa() {
   }
 
   if (authLoading) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC', fontFamily: '-apple-system,sans-serif' }}>
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ textAlign: 'center' }}>
-        <Fa icon="fa-solid fa-spinner fa-spin" style={{ fontSize: 32, color: '#3B82F6', marginBottom: 12 }} />
-        <p style={{ color: '#64748B', fontSize: 14 }}>Caricamento...</p>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0F172A', fontFamily: '-apple-system,sans-serif' }}>
+      <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5, ease: 'easeOut' }} style={{ textAlign: 'center' }}>
+        <motion.div animate={{ scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] }} transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+          style={{ fontSize: 64, marginBottom: 20, display: 'inline-block' }}>
+          <Fa icon="fa-solid fa-house-chimney" style={{ color: '#3B82F6' }} />
+        </motion.div>
+        <motion.h1 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+          style={{ fontSize: 28, fontWeight: 800, color: '#F1F5F9', margin: '0 0 8px', letterSpacing: '-0.5px' }}>Casa Nostra</motion.h1>
+        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
+          style={{ color: '#64748B', fontSize: 14, margin: '0 0 24px' }}>La tua casa, sotto controllo</motion.p>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.7 }}
+          style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
+          {[0,1,2].map(i => (
+            <motion.div key={i} animate={{ scale: [1, 1.4, 1], opacity: [0.3, 1, 0.3] }}
+              transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
+              style={{ width: 8, height: 8, borderRadius: '50%', background: '#3B82F6' }} />
+          ))}
+        </motion.div>
       </motion.div>
     </div>
   )
@@ -5171,9 +5389,29 @@ export default function DashboardCasa() {
   if (!user) return <AuthScreen onAuth={handleAuth} />
   if (!setupDone) return <SetupWizard onComplete={handleSetupComplete} />
 
+  // PIN Lock — se impostato e non ancora sbloccato
+  if (data.pinLock && !pinUnlocked) {
+    return <PinLockScreen onUnlock={(pin) => {
+      if (pin === '__biometric__' || pin === data.pinLock) {
+        setPinUnlocked(true)
+      } else {
+        window.__pinError?.()
+      }
+    }} />
+  }
+
+  // Onboarding tutorial — mostrato solo una volta dopo il primo setup
+  const onboardingVisible = !data.onboardingDone && showOnboarding
+
   return (
     <ThemeCtx.Provider value={theme}>
     <ToastCtx.Provider value={toast}>
+      {/* Onboarding Overlay */}
+      <AnimatePresence>
+        {onboardingVisible && (
+          <OnboardingOverlay onComplete={() => { updateData('onboardingDone', true); setShowOnboarding(false) }} />
+        )}
+      </AnimatePresence>
       <style>{`
         nav::-webkit-scrollbar{height:0;display:none}
         nav{-ms-overflow-style:none;scrollbar-width:none}
@@ -5183,6 +5421,29 @@ export default function DashboardCasa() {
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
       `}</style>
       <div style={{minHeight:'100vh',background:theme.bg,fontFamily:'system-ui,-apple-system,sans-serif',color:theme.text}}>
+        {/* iOS Install Banner */}
+        <AnimatePresence>
+          {showIOSInstall && (
+            <motion.div initial={{y:-80,opacity:0}} animate={{y:0,opacity:1}} exit={{y:-80,opacity:0}} transition={{type:'spring',stiffness:300,damping:30}}
+              style={{position:'fixed',top:0,left:0,right:0,zIndex:10000,padding:'calc(env(safe-area-inset-top, 8px) + 8px) 16px 12px',
+                background:'linear-gradient(135deg,#1E293B,#0F172A)',borderBottom:'1px solid #334155',
+                display:'flex',alignItems:'center',gap:12,boxShadow:'0 4px 20px rgba(0,0,0,0.3)'}}>
+              <div style={{width:44,height:44,borderRadius:12,background:'#3B82F615',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <Fa icon='fa-solid fa-house' style={{fontSize:20,color:'#3B82F6'}} />
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:700,color:'#F1F5F9',marginBottom:2}}>Installa Casa Nostra</div>
+                <div style={{fontSize:11,color:'#94A3B8',lineHeight:1.3}}>
+                  Tocca <Fa icon='fa-solid fa-arrow-up-from-bracket' style={{margin:'0 3px',color:'#3B82F6'}} /> poi <strong style={{color:'#F1F5F9'}}>Aggiungi a Home</strong>
+                </div>
+              </div>
+              <motion.button whileTap={{scale:0.9}} onClick={()=>{setShowIOSInstall(false);sessionStorage.setItem('ios-install-dismissed','1')}}
+                style={{width:28,height:28,borderRadius:'50%',background:'#334155',border:'none',cursor:'pointer',color:'#94A3B8',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <Fa icon='fa-solid fa-xmark' />
+              </motion.button>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {/* HEADER */}
         <header style={{background:theme.headerBg,borderBottom:`1px solid ${theme.border}`,padding:mob?'8px 12px':'13px 24px',paddingTop:mob?'calc(env(safe-area-inset-top, 0px) + 8px)':'calc(env(safe-area-inset-top, 0px) + 13px)',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
           <div style={{display:'flex',alignItems:'center',gap:mob?8:12,minWidth:0}}>

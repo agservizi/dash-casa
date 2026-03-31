@@ -4,10 +4,18 @@
   "description": "Dashboard gestionale per la casa",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F8FAFC",
+  "background_color": "#0F172A",
   "theme_color": "#3B82F6",
   "orientation": "any",
+  "categories": ["lifestyle", "utilities"],
+  "lang": "it",
   "icons": [
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "/icon-192.svg",
       "sizes": "192x192",
@@ -16,7 +24,8 @@
     {
       "src": "/icon-512.svg",
       "sizes": "512x512",
-      "type": "image/svg+xml"
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ]
 }

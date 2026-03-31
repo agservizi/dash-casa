@@ -4,4 +4,5 @@
     <string name="title_activity_main">Casa Nostra</string>
     <string name="package_name">com.casanostra.app</string>
     <string name="custom_url_scheme">com.casanostra.app</string>
+    <string name="widget_description">Budget e scadenze a colpo d\'occhio</string>
 </resources>
