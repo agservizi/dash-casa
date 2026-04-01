@@ -614,25 +614,37 @@ async function loadTesseract() {
   })
 }
 
-// Estrai importo e data da testo OCR (migliorato per bollette)
+// Estrai importo e data da testo OCR (migliorato per scontrini e bollette)
 function parseOCR(text) {
   const result = {}
   // Normalizza testo OCR: rimuovi spazi multipli, caratteri speciali problematici
-  const cleanText = text.replace(/\s+/g,' ').replace(/[*#]+/g,' ').trim()
+  let cleanText = text.replace(/[*#]+/g,' ').replace(/\s+/g,' ').trim()
+  // Fix errori OCR comuni: lettera O → 0 in contesti numerici (es. "O,55" → "0,55")
+  cleanText = cleanText.replace(/(?<=[\s€$:=])O(?=\s*[.,]\s*\d)/g, '0')
+  cleanText = cleanText.replace(/(?<=\d\s*[.,]\s*)O(?=\d)/g, '0')
+  cleanText = cleanText.replace(/(?<=\d)O(?=\s*[.,])/g, '0')
+  console.log('[OCR] Testo normalizzato:', cleanText)
   // Pattern per numeri che OCR può frammentare: "12, 50" "12 ,50" "12 , 50"
   const amt = '(\\d{1,6})\\s*[.,]\\s*(\\d{1,2})'
-  // Cerca importi (€, EUR, TOTALE, scontrini, bollette)
+  // [^\d]* per separare label da importo — tollerante a qualsiasi carattere non-numerico tra tag e cifra
+  const sep = '[^\\d]*?'
+  // Cerca importi: PRIORITÀ 1 = Scontrini (TOTALE COMPLESSIVO, IMPORTO PAGATO)
   const importoPatterns = [
-    // Bollette
-    new RegExp('(?:totale\\s*(?:da\\s*pagare|fattura|bolletta|dovuto))\\s*[:=€]?\\s*[€$]?\\s*' + amt, 'i'),
-    new RegExp('(?:importo\\s*totale)\\s*[:=€]?\\s*[€$]?\\s*' + amt, 'i'),
-    // Scontrini - pattern specifici
-    new RegExp('(?:totale\\s*(?:euro|eur|complessivo|vendita|reparto))\\s*[:=€]?\\s*[€$]?\\s*' + amt, 'i'),
-    new RegExp('(?:tot\\.?\\s*(?:euro|eur|complessivo)?)\\s*[:=€]?\\s*[€$]?\\s*' + amt, 'i'),
-    new RegExp('(?:contante|contanti|carta|bancomat|pos|pagamento|pagato|corrispettivo|corrispettivi|resto)\\s*[:=€]?\\s*[€$]?\\s*' + amt, 'i'),
-    new RegExp('(?:importo\\s*(?:pagato|dovuto)?)\\s*[:=€]?\\s*[€$]?\\s*' + amt, 'i'),
-    new RegExp('(?:totale|total|tot\\.?)\\s*[:=€]?\\s*[€$]?\\s*' + amt, 'i'),
-    new RegExp('(?:pagare|dovuto)\\s*[:=€]?\\s*[€$]?\\s*' + amt, 'i'),
+    // ── SCONTRINI – massima priorità ──
+    new RegExp('totale\\s+complessivo' + sep + amt, 'i'),
+    new RegExp('importo\\s+pagato' + sep + amt, 'i'),
+    new RegExp('pagamento\\s+contante' + sep + amt, 'i'),
+    new RegExp('totale\\s+(?:euro|eur|vendita|reparto)' + sep + amt, 'i'),
+    new RegExp('corrispettiv[oi]\\s+(?:pagato|giornaliero)?' + sep + amt, 'i'),
+    // ── BOLLETTE ──
+    new RegExp('totale\\s+(?:da\\s*pagare|fattura|bolletta|dovuto)' + sep + amt, 'i'),
+    new RegExp('importo\\s+totale' + sep + amt, 'i'),
+    // ── PATTERN GENERICI ──
+    new RegExp('tot\\.?\\s*(?:euro|eur|complessivo)?' + sep + amt, 'i'),
+    new RegExp('(?:contante|contanti|carta|bancomat|pos)' + sep + amt, 'i'),
+    new RegExp('importo\\s*(?:dovuto)?' + sep + amt, 'i'),
+    new RegExp('(?:totale|total)' + sep + amt, 'i'),
+    new RegExp('(?:pagare|dovuto)' + sep + amt, 'i'),
     // Simbolo € con importo
     new RegExp('[€]\\s*' + amt),
     new RegExp(amt + '\\s*[€]'),
@@ -642,7 +654,11 @@ function parseOCR(text) {
   ]
   for (const p of importoPatterns) {
     const m = cleanText.match(p)
-    if (m) { result.importo = m[1] + '.' + m[2].padEnd(2,'0'); break }
+    if (m) {
+      result.importo = m[1] + '.' + m[2].padEnd(2,'0')
+      console.log('[OCR] Importo rilevato con pattern:', p.source, '→', result.importo)
+      break
+    }
   }
   // Fallback: se nessun pattern ha matchato, cerca l'ultimo importo grande nel testo (tipico degli scontrini: il totale è l'ultimo importo)
   if (!result.importo) {
@@ -651,7 +667,7 @@ function parseOCR(text) {
       // Prendi il più grande tra gli ultimi 3 importi trovati (il totale è spesso l'ultimo o il più grande)
       const candidates = allAmounts.slice(-3).map(m => ({ val: parseFloat(m[1]+'.'+m[2].padEnd(2,'0')), int: m[1], dec: m[2] }))
       const best = candidates.reduce((a,b) => a.val > b.val ? a : b)
-      if (best.val >= 0.5) result.importo = best.int + '.' + best.dec.padEnd(2,'0')
+      if (best.val >= 0.01) result.importo = best.int + '.' + best.dec.padEnd(2,'0')
     }
   }
   // Cerca date (più formati, anche con spazi OCR)
@@ -1746,7 +1762,7 @@ function SpeseTab({ data, updateData }) {
       </div>
 
       <div style={{display:'flex',flexDirection:'column',gap:16}}>
-        <div style={S.card}>
+        <div style={{...S.card,overflow:'hidden'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
             <h3 style={{margin:0,fontSize:16,fontWeight:600,color:t.text}}>{editId ? 'Modifica spesa' : '+ Nuova spesa'}</h3>
             <div style={{display:'flex',gap:6}}>
@@ -1833,9 +1849,9 @@ function SpeseTab({ data, updateData }) {
                 style={{position:'absolute',top:-8,right:-8,width:22,height:22,borderRadius:'50%',background:'#EF4444',color:'white',border:'none',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center'}}>×</motion.button>
             </div>
           )}
-          <div style={{display:'flex',gap:8}}>
-            <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn(t.accent),flex:1}}>{editId ? 'Aggiorna' : 'Aggiungi spesa'}</motion.button>
-            {editId && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px'}}>Annulla</motion.button>}
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn(t.accent),flex:1,minWidth:0,boxSizing:'border-box',marginTop:0}}>{editId ? 'Aggiorna' : 'Aggiungi spesa'}</motion.button>
+            {editId && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px',width:'auto',boxSizing:'border-box',marginTop:0}}>Annulla</motion.button>}
           </div>
         </div>
 
@@ -2152,7 +2168,7 @@ function ScadenzeTab({ data, updateData }) {
         </div>
       </div>
 
-      <div style={{...S.card,alignSelf:'start'}}>
+      <div style={{...S.card,alignSelf:'start',overflow:'hidden'}}>
         <h3 style={{margin:'0 0 16px',fontSize:16,fontWeight:600,color:t.text}}>{editId ? 'Modifica scadenza' : '+ Nuova scadenza'}</h3>
         <FormField label="Nome" error={errors.nome}>
           <Inp value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} placeholder="es. Bollo auto" onKeyDown={e=>e.key==='Enter'&&aggiungi()} />
@@ -2174,9 +2190,9 @@ function ScadenzeTab({ data, updateData }) {
         <FormField label="Importo stimato (€)">
           <Inp type="number" value={form.importoStimato} onChange={e=>setForm({...form,importoStimato:e.target.value})} placeholder="Per creare spesa quando gestita" />
         </FormField>
-        <div style={{display:'flex',gap:8}}>
-          <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#F59E0B'),flex:1}}>{editId ? 'Aggiorna' : 'Aggiungi scadenza'}</motion.button>
-          {editId && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px'}}>Annulla</motion.button>}
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#F59E0B'),flex:1,minWidth:0,boxSizing:'border-box',marginTop:0}}>{editId ? 'Aggiorna' : 'Aggiungi scadenza'}</motion.button>
+          {editId && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px',width:'auto',boxSizing:'border-box',marginTop:0}}>Annulla</motion.button>}
         </div>
 
         {/* Convert to spesa prompt */}
@@ -2313,7 +2329,7 @@ function AttivitaTab({ data, updateData }) {
         </div>
       </div>
 
-      <div style={{...S.card,alignSelf:'start'}}>
+      <div style={{...S.card,alignSelf:'start',overflow:'hidden'}}>
         <h3 style={{margin:'0 0 16px',fontSize:16,fontWeight:600,color:t.text}}>{editId ? 'Modifica attivit\u00e0' : '+ Nuova attivit\u00e0'}</h3>
         <FormField label="Cosa fare" error={errors.testo}>
           <Inp value={form.testo} onChange={e=>setForm({...form,testo:e.target.value})} placeholder="es. Riparare rubinetto" onKeyDown={e=>e.key==='Enter'&&aggiungi()} />
@@ -2336,9 +2352,9 @@ function AttivitaTab({ data, updateData }) {
           <Sel value={form.priorita} onChange={e=>setForm({...form,priorita:e.target.value})} style={S.inputFull}
             options={['Alta','Media','Bassa'].map(p=>({value:p,label:p}))} />
         </FormField>
-        <div style={{display:'flex',gap:8}}>
-          <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#10B981'),flex:1}}>{editId ? 'Aggiorna' : 'Aggiungi attivit\u00e0'}</motion.button>
-          {editId && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px'}}>Annulla</motion.button>}
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#10B981'),flex:1,minWidth:0,boxSizing:'border-box',marginTop:0}}>{editId ? 'Aggiorna' : 'Aggiungi attivit\u00e0'}</motion.button>
+          {editId && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px',width:'auto',boxSizing:'border-box',marginTop:0}}>Annulla</motion.button>}
         </div>
 
         {data.attivita.length>0 && (
@@ -2460,7 +2476,7 @@ function ConsumiTab({ data, updateData }) {
         )}
       </div>
 
-      <div style={{...S.card,alignSelf:'start'}}>
+      <div style={{...S.card,alignSelf:'start',overflow:'hidden'}}>
         <h3 style={{margin:'0 0 16px',fontSize:16,fontWeight:600,color:t.text}}>{editMese ? 'Modifica consumi' : '+ Inserisci consumi'}</h3>
         <FormField label="Mese">
           <MonthPick value={form.mese} onChange={e=>setForm({...form,mese:e.target.value})} style={S.inputFull} />
@@ -2484,9 +2500,9 @@ function ConsumiTab({ data, updateData }) {
           )}
         </AnimatePresence>
         <p style={{margin:'0 0 8px',fontSize:11,color:t.textMut}}>{editMese ? 'Stai modificando i consumi di questo mese.' : 'Se il mese esiste già, i dati verranno aggiornati.'}</p>
-        <div style={{display:'flex',gap:8}}>
-          <motion.button whileTap={{scale:0.97}} onClick={salva} style={{...S.btn('#8B5CF6'),flex:1}}>{editMese ? 'Aggiorna consumi' : 'Salva consumi'}</motion.button>
-          {editMese && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px'}}>Annulla</motion.button>}
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <motion.button whileTap={{scale:0.97}} onClick={salva} style={{...S.btn('#8B5CF6'),flex:1,minWidth:0,boxSizing:'border-box',marginTop:0}}>{editMese ? 'Aggiorna consumi' : 'Salva consumi'}</motion.button>
+          {editMese && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px',width:'auto',boxSizing:'border-box',marginTop:0}}>Annulla</motion.button>}
         </div>
         {ult&&penu && (
           <motion.div initial={{opacity:0}} animate={{opacity:1}} style={{marginTop:12,padding:'10px 12px',background:t.rowBg,borderRadius:10}}>
@@ -3159,7 +3175,7 @@ function ContattiTab({ data, updateData }) {
         }
       </div>
 
-      <div style={{...S.card,alignSelf:'start'}}>
+      <div style={{...S.card,alignSelf:'start',overflow:'hidden'}}>
         <h3 style={{margin:'0 0 16px',fontSize:16,fontWeight:600,color:t.text}}>{editId ? 'Modifica contatto' : '+ Nuovo contatto'}</h3>
         <FormField label="Nome" error={errors.nome}>
           <Inp value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} placeholder="es. Mario Rossi" onKeyDown={e=>e.key==='Enter'&&aggiungi()} />
@@ -3174,9 +3190,9 @@ function ContattiTab({ data, updateData }) {
         <FormField label="Note">
           <Inp value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Opzionale" />
         </FormField>
-        <div style={{display:'flex',gap:8}}>
-          <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#06B6D4'),flex:1}}>{editId ? 'Aggiorna' : 'Aggiungi contatto'}</motion.button>
-          {editId && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px'}}>Annulla</motion.button>}
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#06B6D4'),flex:1,minWidth:0,boxSizing:'border-box',marginTop:0}}>{editId ? 'Aggiorna' : 'Aggiungi contatto'}</motion.button>
+          {editId && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px',width:'auto',boxSizing:'border-box',marginTop:0}}>Annulla</motion.button>}
         </div>
       </div>
     </div>
@@ -3275,7 +3291,7 @@ function InventarioTab({ data, updateData }) {
         </div>
       </div>
 
-      <div style={{...S.card,alignSelf:'start'}}>
+      <div style={{...S.card,alignSelf:'start',overflow:'hidden'}}>
         <h3 style={{margin:'0 0 16px',fontSize:16,fontWeight:600,color:t.text}}>{editId ? 'Modifica oggetto' : '+ Nuovo oggetto'}</h3>
         <FormField label="Nome oggetto" error={errors.nome}>
           <Inp value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} placeholder="es. Lavatrice" onKeyDown={e=>e.key==='Enter'&&aggiungi()} />
@@ -3293,9 +3309,9 @@ function InventarioTab({ data, updateData }) {
         <FormField label="Note">
           <Inp value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Opzionale" />
         </FormField>
-        <div style={{display:'flex',gap:8}}>
-          <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#8B5CF6'),flex:1}}>{editId ? 'Aggiorna' : 'Aggiungi oggetto'}</motion.button>
-          {editId && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px'}}>Annulla</motion.button>}
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#8B5CF6'),flex:1,minWidth:0,boxSizing:'border-box',marginTop:0}}>{editId ? 'Aggiorna' : 'Aggiungi oggetto'}</motion.button>
+          {editId && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px',width:'auto',boxSizing:'border-box',marginTop:0}}>Annulla</motion.button>}
         </div>
       </div>
     </div>
@@ -3505,7 +3521,7 @@ function StipendioTab({ data, updateData }) {
 
       {/* Form laterale */}
       <div style={{display:'flex',flexDirection:'column',gap:16}}>
-        <div style={S.card}>
+        <div style={{...S.card,overflow:'hidden'}}>
           <h3 style={{margin:'0 0 16px',fontSize:16,fontWeight:600,color:t.text}}>{editId ? 'Modifica versamento' : '+ Registra versamento'}</h3>
           <FormField label="Importo versato (€)" error={errors.importo}>
             <Inp type="number" value={form.importo} onChange={e => setForm({...form, importo:e.target.value})}
@@ -3524,9 +3540,9 @@ function StipendioTab({ data, updateData }) {
                 options={[{value:'',label:'\u2014 tutti \u2014'},...(data.conti||[]).map(c=>({value:c.nome,label:c.nome}))]} />
             </FormField>
           )}
-          <div style={{display:'flex',gap:8}}>
-            <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#3B82F6'),flex:1}}>{editId ? 'Aggiorna' : 'Registra versamento'}</motion.button>
-            {editId && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px'}}>Annulla</motion.button>}
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            <motion.button whileTap={{scale:0.97}} onClick={aggiungi} style={{...S.btn('#3B82F6'),flex:1,minWidth:0,boxSizing:'border-box',marginTop:0}}>{editId ? 'Aggiorna' : 'Registra versamento'}</motion.button>
+            {editId && <motion.button whileTap={{scale:0.97}} onClick={cancelEdit} style={{...S.btn('#6B7280'),flex:'none',padding:'12px 16px',width:'auto',boxSizing:'border-box',marginTop:0}}>Annulla</motion.button>}
           </div>
         </div>
 
@@ -3784,7 +3800,7 @@ function AccantonamentiTab({ data, updateData }) {
 
       {/* Form laterale */}
       <div style={{display:'flex',flexDirection:'column',gap:16}}>
-        <div style={S.card}>
+        <div style={{...S.card,overflow:'hidden'}}>
           <h3 style={{margin:'0 0 16px',fontSize:16,fontWeight:600,color:t.text}}>
             {editId ? 'Modifica fondo' : '+ Nuovo fondo'}
           </h3>
@@ -3833,12 +3849,12 @@ function AccantonamentiTab({ data, updateData }) {
               </div>
             ) : null
           })()}
-          <div style={{display:'flex',gap:8}}>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
             <motion.button whileTap={{scale:0.97}} onClick={aggiungi}
-              style={{...S.btn('#3B82F6'),flex:1}}>{editId ? 'Aggiorna' : 'Crea fondo'}</motion.button>
+              style={{...S.btn('#3B82F6'),flex:1,minWidth:0,boxSizing:'border-box',marginTop:0}}>{editId ? 'Aggiorna' : 'Crea fondo'}</motion.button>
             {editId && (
               <motion.button whileTap={{scale:0.97}} onClick={cancelEdit}
-                style={{...S.btn('#6B7280'),flex:'none',padding:'10px 16px'}}>Annulla</motion.button>
+                style={{...S.btn('#6B7280'),flex:'none',padding:'10px 16px',width:'auto',boxSizing:'border-box',marginTop:0}}>Annulla</motion.button>
             )}
           </div>
         </div>
@@ -5057,6 +5073,8 @@ export default function DashboardCasa() {
   const syncTimer = useRef(null)
   const lastSynced = useRef(null)
   const dataLoaded = useRef(false)
+  const localDirty = useRef(false) // true quando ci sono modifiche locali non ancora salvate su Supabase
+  const skipNextSync = useRef(false) // true per evitare il salvataggio ridondante dopo load iniziale/polling
   const w = useWindowWidth(); const mob = w < 768
 
   const toast = useCallback((msg, type='success') => {
@@ -5121,11 +5139,25 @@ export default function DashboardCasa() {
         setSyncStatus('syncing')
         const { data: row, error } = await supabase.from('dashboard_data').select('data, updated_at').eq('id', user.id).single()
         if (!error && row?.data && Object.keys(row.data).length > 0) {
+          skipNextSync.current = true // evita di risalvare i dati appena caricati
           setData({ ...INITIAL, ...row.data })
           setSetupDone(true)
           lastSynced.current = new Date(row.updated_at).getTime()
+        } else {
+          // Fallback: prova a caricare da localStorage
+          try {
+            const local = localStorage.getItem('dashboard_data_backup')
+            if (local) {
+              const parsed = JSON.parse(local)
+              if (parsed && Object.keys(parsed).length > 0) {
+                skipNextSync.current = true
+                setData({ ...INITIAL, ...parsed })
+                setSetupDone(true)
+              }
+            }
+          } catch {}
         }
-        setSyncStatus('ok')
+        setSyncStatus(error ? 'error' : 'ok')
       } catch { setSyncStatus('error') }
       dataLoaded.current = true
     }
@@ -5134,13 +5166,17 @@ export default function DashboardCasa() {
     // Polling: controlla aggiornamenti da altri dispositivi ogni 5 secondi
     const pollInterval = setInterval(async () => {
       if (!dataLoaded.current) return
+      // Se ci sono modifiche locali non salvate, NON sovrascrivere
+      if (localDirty.current) return
       try {
         const { data: row, error } = await supabase.from('dashboard_data').select('updated_at, data').eq('id', user.id).single()
         if (error || !row) return
         const remoteTs = new Date(row.updated_at).getTime()
         if (lastSynced.current && remoteTs > lastSynced.current + 1500) {
-          // Dati più recenti trovati su Supabase — aggiorna
+          // Dati più recenti trovati su Supabase — aggiorna (solo se NON ci sono modifiche locali pendenti)
+          if (localDirty.current) return // double-check dopo l'await
           dataLoaded.current = false
+          skipNextSync.current = true // non risalvare dati appena scaricati
           setData({ ...INITIAL, ...row.data })
           lastSynced.current = remoteTs
           setSyncStatus('ok')
@@ -5155,16 +5191,35 @@ export default function DashboardCasa() {
   // Salva su Supabase (debounced) — solo dopo che i dati sono stati caricati
   useEffect(() => {
     if (!user || !dataLoaded.current) return
+    // Skip sync per dati appena caricati da Supabase/polling (evita salvataggio ridondante)
+    if (skipNextSync.current) { skipNextSync.current = false; return }
+    localDirty.current = true // segna che ci sono modifiche locali da salvare
+    // Salva subito su localStorage come backup (protezione crash/chiusura)
+    try { localStorage.setItem('dashboard_data_backup', JSON.stringify(data)) } catch {}
     if (syncTimer.current) clearTimeout(syncTimer.current)
     syncTimer.current = setTimeout(async () => {
       try {
         setSyncStatus('syncing')
         const ts = new Date().toISOString()
         const { error } = await supabase.from('dashboard_data').upsert({ id: user.id, data, updated_at: ts })
+        if (!error) {
+          lastSynced.current = new Date(ts).getTime()
+          localDirty.current = false // salvato: il poll può riprendere
+        }
         setSyncStatus(error ? 'error' : 'ok')
-        if (!error) lastSynced.current = new Date(ts).getTime()
+        // Se il salvataggio fallisce, riprova dopo 3 secondi
+        if (error) {
+          syncTimer.current = setTimeout(async () => {
+            try {
+              const ts2 = new Date().toISOString()
+              const { error: e2 } = await supabase.from('dashboard_data').upsert({ id: user.id, data, updated_at: ts2 })
+              if (!e2) { lastSynced.current = new Date(ts2).getTime(); localDirty.current = false }
+              setSyncStatus(e2 ? 'error' : 'ok')
+            } catch { setSyncStatus('error') }
+          }, 3000)
+        }
       } catch { setSyncStatus('error') }
-    }, 2000)
+    }, 1500)
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current) }
   }, [data, user])
 
@@ -5337,7 +5392,7 @@ export default function DashboardCasa() {
     }
   }, [])
 
-  // Android Widget sync — aggiorna i dati del widget quando cambiano spese/budget/scadenze
+  // Android Widget sync — aggiorna i dati del widget quando cambiano spese/budget/scadenze/attività
   useEffect(() => {
     if (!window.Capacitor?.isNativePlatform?.()) return
     try {
@@ -5350,14 +5405,55 @@ export default function DashboardCasa() {
         const quando = gg<0?'scaduta':gg===0?'oggi':gg===1?'domani':`tra ${gg}g`
         return `${s.nome} — ${quando}`
       }
+      // Ultima spesa (per data, la più recente)
+      const sortedSpese = [...data.spese].sort((a,b)=>new Date(b.data)-new Date(a.data)||b.id-a.id)
+      const ultima = sortedSpese[0]
+      // Budget giornaliero residuo
+      const giorniNelMese = new Date(oggi.getFullYear(), oggi.getMonth()+1, 0).getDate()
+      const giorniRimasti = giorniNelMese - oggi.getDate() + 1
+      const budgetGiorn = data.budget > 0 ? Math.max(0, ((data.budget||0) - speseMese) / giorniRimasti) : 0
+      // Attività aperte (priorità: Alta > Media > Bassa)
+      const prioOrd = {Alta:0,Media:1,Bassa:2}
+      const attAperte = (data.attivita||[]).filter(a=>!a.completata).sort((a,b)=>(prioOrd[a.priorita]??1)-(prioOrd[b.priorita]??1))
+      const fmtAtt = a => {
+        const pri = a.priorita==='Alta'?'🔴':a.priorita==='Media'?'🟡':'🟢'
+        return `${pri} ${a.testo}`
+      }
       window.Capacitor.Plugins.WidgetBridge?.updateWidget({
         speseMese, budget: data.budget||0,
         scadenza1: prossime[0]?fmt(prossime[0]):'',
         scadenza2: prossime[1]?fmt(prossime[1]):'',
         scadenza3: prossime[2]?fmt(prossime[2]):'',
+        ultimaSpesaDesc: ultima ? ultima.descrizione : '',
+        ultimaSpesaImporto: ultima ? `€ ${(+ultima.importo).toFixed(2)}` : '',
+        budgetGiornaliero: budgetGiorn > 0 ? `€ ${budgetGiorn.toFixed(0)}/giorno` : '',
+        attivita1: attAperte[0] ? fmtAtt(attAperte[0]) : '',
+        attivita2: attAperte[1] ? fmtAtt(attAperte[1]) : '',
+        attivita3: attAperte[2] ? fmtAtt(attAperte[2]) : '',
+        attivitaAperte: attAperte.length,
       })
     } catch(e) { /* widget non disponibile su web */ }
-  }, [data.spese, data.budget, data.scadenze])
+  }, [data.spese, data.budget, data.scadenze, data.attivita])
+
+  // APK auto-update checker (solo su piattaforma nativa)
+  const [apkUpdate, setApkUpdate] = useState(null) // {versionName, releaseNotes, apkUrl, forceUpdate}
+  useEffect(() => {
+    if (!window.Capacitor?.isNativePlatform?.()) return
+    const APP_VERSION_CODE = 2 // deve corrispondere a versionCode in build.gradle
+    const checkUpdate = async () => {
+      try {
+        const res = await fetch('https://dash-casa.vercel.app/version.json?_t=' + Date.now())
+        if (!res.ok) return
+        const info = await res.json()
+        if (info.versionCode > APP_VERSION_CODE) {
+          setApkUpdate(info)
+        }
+      } catch { /* offline o errore, ignora */ }
+    }
+    checkUpdate()
+    const id = setInterval(checkUpdate, 3600000) // controlla ogni ora
+    return () => clearInterval(id)
+  }, [])
 
   // iOS PWA install banner
   const [showIOSInstall, setShowIOSInstall] = useState(false)
@@ -5542,6 +5638,33 @@ export default function DashboardCasa() {
                 style={{width:28,height:28,borderRadius:'50%',background:'#334155',border:'none',cursor:'pointer',color:'#94A3B8',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                 <Fa icon='fa-solid fa-xmark' />
               </motion.button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {/* APK Update Banner */}
+        <AnimatePresence>
+          {apkUpdate && (
+            <motion.div initial={{y:-80,opacity:0}} animate={{y:0,opacity:1}} exit={{y:-80,opacity:0}} transition={{type:'spring',stiffness:300,damping:30}}
+              style={{position:'fixed',top:0,left:0,right:0,zIndex:10001,padding:'calc(env(safe-area-inset-top, 8px) + 8px) 16px 12px',
+                background:'linear-gradient(135deg,#1E40AF,#0F172A)',borderBottom:'1px solid #3B82F6',
+                display:'flex',alignItems:'center',gap:12,boxShadow:'0 4px 20px rgba(0,0,0,0.4)'}}>
+              <div style={{width:44,height:44,borderRadius:12,background:'#3B82F620',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <Fa icon='fa-solid fa-download' style={{fontSize:20,color:'#60A5FA'}} />
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:700,color:'#F1F5F9',marginBottom:2}}>Aggiornamento v{apkUpdate.versionName}</div>
+                <div style={{fontSize:11,color:'#94A3B8',lineHeight:1.3}}>{apkUpdate.releaseNotes||'Nuova versione disponibile'}</div>
+              </div>
+              <motion.button whileTap={{scale:0.93}} onClick={()=>window.open(apkUpdate.apkUrl,'_system')}
+                style={{padding:'8px 14px',borderRadius:10,background:'#3B82F6',border:'none',cursor:'pointer',color:'#fff',fontSize:12,fontWeight:700,flexShrink:0}}>
+                Aggiorna
+              </motion.button>
+              {!apkUpdate.forceUpdate && (
+                <motion.button whileTap={{scale:0.9}} onClick={()=>setApkUpdate(null)}
+                  style={{width:28,height:28,borderRadius:'50%',background:'#1E3A5F',border:'none',cursor:'pointer',color:'#94A3B8',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <Fa icon='fa-solid fa-xmark' />
+                </motion.button>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

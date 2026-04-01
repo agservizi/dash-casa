@@ -41,12 +41,28 @@
         android:padding="10dp"
         android:layout_marginBottom="6dp">
 
-        <TextView
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="💰 Budget mensile"
-            android:textSize="11sp"
-            android:textColor="#94A3B8" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="💰 Budget mensile"
+                android:textSize="11sp"
+                android:textColor="#94A3B8" />
+
+            <TextView
+                android:id="@+id/widget_budget_daily"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="10sp"
+                android:textColor="#38BDF8"
+                android:visibility="gone" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/widget_budget"
@@ -66,6 +82,94 @@
             android:max="100"
             android:progress="0"
             android:progressDrawable="@drawable/widget_progress" />
+    </LinearLayout>
+
+    <!-- Ultima spesa -->
+    <LinearLayout
+        android:id="@+id/widget_ultima_spesa_card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="@drawable/widget_card_bg"
+        android:padding="10dp"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="6dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🧾 "
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/widget_ultima_spesa"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textSize="12sp"
+            android:textColor="#E2E8F0"
+            android:singleLine="true"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/widget_ultima_spesa_importo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="#F59E0B" />
+    </LinearLayout>
+
+    <!-- Attività aperte -->
+    <LinearLayout
+        android:id="@+id/widget_attivita_card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/widget_card_bg"
+        android:padding="10dp"
+        android:layout_marginBottom="6dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/widget_attivita_header"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="✅ Attività"
+            android:textSize="11sp"
+            android:textColor="#94A3B8"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/widget_attivita1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="#E2E8F0"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/widget_attivita2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="#E2E8F0"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/widget_attivita3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="#E2E8F0"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:visibility="gone" />
     </LinearLayout>
 
     <!-- Scadenze -->

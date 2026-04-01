@@ -3,6 +3,7 @@ package com.casanostra.app;
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -22,6 +23,25 @@ public class CasaNostraWidget extends AppWidgetProvider {
         }
     }
 
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        super.onReceive(context, intent);
+        // Gestisci broadcast espliciti per refresh forzato
+        if (AppWidgetManager.ACTION_APPWIDGET_UPDATE.equals(intent.getAction())) {
+            AppWidgetManager mgr = AppWidgetManager.getInstance(context);
+            int[] ids = intent.getIntArrayExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS);
+            if (ids == null) {
+                ComponentName cn = new ComponentName(context, CasaNostraWidget.class);
+                ids = mgr.getAppWidgetIds(cn);
+            }
+            if (ids != null) {
+                for (int id : ids) {
+                    updateAppWidget(context, mgr, id);
+                }
+            }
+        }
+    }
+
     static void updateAppWidget(Context context, AppWidgetManager appWidgetManager, int appWidgetId) {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_casa_nostra);
 
@@ -36,6 +56,13 @@ public class CasaNostraWidget extends AppWidgetProvider {
         String scad1 = prefs.getString("scadenza1", "");
         String scad2 = prefs.getString("scadenza2", "");
         String scad3 = prefs.getString("scadenza3", "");
+        String ultimaSpesaDesc = prefs.getString("ultimaSpesaDesc", "");
+        String ultimaSpesaImporto = prefs.getString("ultimaSpesaImporto", "");
+        String budgetGiornaliero = prefs.getString("budgetGiornaliero", "");
+        String attivita1 = prefs.getString("attivita1", "");
+        String attivita2 = prefs.getString("attivita2", "");
+        String attivita3 = prefs.getString("attivita3", "");
+        int attivitaAperte = prefs.getInt("attivitaAperte", 0);
 
         // Budget display
         if (budget > 0) {
@@ -45,6 +72,44 @@ public class CasaNostraWidget extends AppWidgetProvider {
         } else {
             views.setTextViewText(R.id.widget_budget, "Apri l'app per configurare");
             views.setProgressBar(R.id.widget_budget_bar, 100, 0, false);
+        }
+
+        // Budget giornaliero residuo
+        if (!budgetGiornaliero.isEmpty()) {
+            views.setTextViewText(R.id.widget_budget_daily, budgetGiornaliero);
+            views.setViewVisibility(R.id.widget_budget_daily, View.VISIBLE);
+        } else {
+            views.setViewVisibility(R.id.widget_budget_daily, View.GONE);
+        }
+
+        // Ultima spesa
+        if (!ultimaSpesaDesc.isEmpty()) {
+            views.setTextViewText(R.id.widget_ultima_spesa, ultimaSpesaDesc);
+            views.setTextViewText(R.id.widget_ultima_spesa_importo, ultimaSpesaImporto);
+            views.setViewVisibility(R.id.widget_ultima_spesa_card, View.VISIBLE);
+        } else {
+            views.setViewVisibility(R.id.widget_ultima_spesa_card, View.GONE);
+        }
+
+        // Attività aperte
+        boolean hasAttivita = !attivita1.isEmpty() || !attivita2.isEmpty() || !attivita3.isEmpty();
+        if (hasAttivita || attivitaAperte > 0) {
+            views.setViewVisibility(R.id.widget_attivita_card, View.VISIBLE);
+            views.setTextViewText(R.id.widget_attivita_header, "✅ Attività (" + attivitaAperte + " aperte)");
+            if (!attivita1.isEmpty()) {
+                views.setTextViewText(R.id.widget_attivita1, "• " + attivita1);
+                views.setViewVisibility(R.id.widget_attivita1, View.VISIBLE);
+            } else { views.setViewVisibility(R.id.widget_attivita1, View.GONE); }
+            if (!attivita2.isEmpty()) {
+                views.setTextViewText(R.id.widget_attivita2, "• " + attivita2);
+                views.setViewVisibility(R.id.widget_attivita2, View.VISIBLE);
+            } else { views.setViewVisibility(R.id.widget_attivita2, View.GONE); }
+            if (!attivita3.isEmpty()) {
+                views.setTextViewText(R.id.widget_attivita3, "• " + attivita3);
+                views.setViewVisibility(R.id.widget_attivita3, View.VISIBLE);
+            } else { views.setViewVisibility(R.id.widget_attivita3, View.GONE); }
+        } else {
+            views.setViewVisibility(R.id.widget_attivita_card, View.GONE);
         }
 
         // Scadenze display

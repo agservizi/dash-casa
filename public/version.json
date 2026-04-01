@@ -1,0 +1,7 @@
+{
+  "versionCode": 2,
+  "versionName": "2.0",
+  "apkUrl": "https://dash-casa.vercel.app/releases/app-release.apk",
+  "releaseNotes": "Miglioramenti widget, fix sync, OCR scontrini migliorato",
+  "forceUpdate": false
+}

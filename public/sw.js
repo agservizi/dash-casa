@@ -1,5 +1,5 @@
-const CACHE_NAME = 'casa-nostra-v4'
-const STATIC_CACHE = 'casa-nostra-static-v4'
+const CACHE_NAME = 'casa-nostra-v5'
+const STATIC_CACHE = 'casa-nostra-static-v5'
 const URLS_TO_CACHE = [
   '/',
   '/index.html',
