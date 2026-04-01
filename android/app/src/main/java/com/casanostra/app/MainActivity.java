@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         // Register custom plugins
         registerPlugin(WidgetBridgePlugin.class);
+        registerPlugin(AppUpdatePlugin.class);
 
         super.onCreate(savedInstanceState);
 

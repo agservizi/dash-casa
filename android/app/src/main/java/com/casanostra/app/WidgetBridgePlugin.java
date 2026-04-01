@@ -34,26 +34,42 @@ public class WidgetBridgePlugin extends Plugin {
         editor.putString("attivita1", call.getString("attivita1", ""));
         editor.putString("attivita2", call.getString("attivita2", ""));
         editor.putString("attivita3", call.getString("attivita3", ""));
+        editor.putString("attivita4", call.getString("attivita4", ""));
+        editor.putString("attivita5", call.getString("attivita5", ""));
+        editor.putString("scadenza4", call.getString("scadenza4", ""));
+        editor.putString("scadenza5", call.getString("scadenza5", ""));
         Integer attivitaAperte = call.getInt("attivitaAperte", 0);
         editor.putInt("attivitaAperte", attivitaAperte != null ? attivitaAperte : 0);
+        Double risparmio = call.getDouble("risparmio", 0.0);
+        Double goalRisparmio = call.getDouble("goalRisparmio", 0.0);
+        editor.putFloat("risparmio", risparmio != null ? risparmio.floatValue() : 0f);
+        editor.putFloat("goalRisparmio", goalRisparmio != null ? goalRisparmio.floatValue() : 0f);
         editor.commit(); // commit sincrono: i dati devono essere scritti PRIMA di aggiornare il widget
 
-        // Trigger widget update via broadcast (forza refresh immediato)
+        // Trigger widget update per TUTTI i formati
         AppWidgetManager widgetManager = AppWidgetManager.getInstance(context);
-        ComponentName widgetComponent = new ComponentName(context, CasaNostraWidget.class);
-        int[] widgetIds = widgetManager.getAppWidgetIds(widgetComponent);
-        if (widgetIds.length > 0) {
-            // Aggiorna direttamente ogni widget
-            for (int id : widgetIds) {
-                CasaNostraWidget.updateAppWidget(context, widgetManager, id);
-            }
-            // Invia anche broadcast esplicito come fallback
-            Intent updateIntent = new Intent(context, CasaNostraWidget.class);
-            updateIntent.setAction(AppWidgetManager.ACTION_APPWIDGET_UPDATE);
-            updateIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, widgetIds);
-            context.sendBroadcast(updateIntent);
-        }
+
+        // Medium widget
+        updateWidgetClass(context, widgetManager, CasaNostraWidget.class);
+        // Small widget
+        updateWidgetClass(context, widgetManager, CasaNostraWidgetSmall.class);
+        // Large widget
+        updateWidgetClass(context, widgetManager, CasaNostraWidgetLarge.class);
 
         call.resolve(new JSObject().put("success", true));
+    }
+
+    private void updateWidgetClass(Context context, AppWidgetManager mgr, Class<?> cls) {
+        ComponentName cn = new ComponentName(context, cls);
+        int[] ids = mgr.getAppWidgetIds(cn);
+        if (ids != null && ids.length > 0) {
+            if (cls == CasaNostraWidget.class) {
+                for (int id : ids) CasaNostraWidget.updateAppWidget(context, mgr, id);
+            } else if (cls == CasaNostraWidgetSmall.class) {
+                for (int id : ids) CasaNostraWidgetSmall.updateAppWidget(context, mgr, id);
+            } else if (cls == CasaNostraWidgetLarge.class) {
+                for (int id : ids) CasaNostraWidgetLarge.updateAppWidget(context, mgr, id);
+            }
+        }
     }
 }

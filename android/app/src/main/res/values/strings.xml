@@ -5,4 +5,6 @@
     <string name="package_name">com.casanostra.app</string>
     <string name="custom_url_scheme">com.casanostra.app</string>
     <string name="widget_description">Budget e scadenze a colpo d\'occhio</string>
+    <string name="widget_small_desc">Budget mensile compatto</string>
+    <string name="widget_large_desc">Dashboard completa con budget, scadenze, attività e risparmio</string>
 </resources>

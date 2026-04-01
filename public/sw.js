@@ -1,5 +1,5 @@
-const CACHE_NAME = 'casa-nostra-v5'
-const STATIC_CACHE = 'casa-nostra-static-v5'
+const CACHE_NAME = 'casa-nostra-v6'
+const STATIC_CACHE = 'casa-nostra-static-v6'
 const URLS_TO_CACHE = [
   '/',
   '/index.html',
@@ -27,6 +27,12 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)
+
+  // NEVER cache version.json or APK files — always fetch from network
+  if (url.pathname.includes('version.json') || url.pathname.includes('/releases/')) {
+    event.respondWith(fetch(event.request))
+    return
+  }
 
   // For navigation requests (HTML pages), use network-first
   if (event.request.mode === 'navigate') {

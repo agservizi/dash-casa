@@ -4082,6 +4082,126 @@ function ListaSpesaTab({ data, updateData }) {
   )
 }
 
+// ── VERSION CHECK CARD ─────────────────────────────────────────────────────────
+function VersionCheckCard({ theme: t, S }) {
+  const [status, setStatus] = useState('idle') // idle | checking | available | uptodate | downloading | error
+  const [progress, setProgress] = useState(0)
+  const [remote, setRemote] = useState(null)
+  const [installed, setInstalled] = useState(null)
+  const [error, setError] = useState(null)
+  const toast = useToast()
+  const isNative = !!window.Capacitor?.isNativePlatform?.()
+  const pluginRef = useRef(null)
+
+  useEffect(() => {
+    if (!isNative) return
+    try {
+      const plugin = window.Capacitor?.Plugins?.AppUpdate
+      if (!plugin) return
+      pluginRef.current = plugin
+      plugin.getVersionInfo().then(v => setInstalled(v)).catch(() => {})
+      plugin.addListener('downloadProgress', (ev) => setProgress(ev.progress))
+    } catch { /* plugin non disponibile in questa versione APK */ }
+  }, [])
+
+  const checkForUpdate = async () => {
+    setStatus('checking'); setError(null)
+    try {
+      let localCode = installed?.versionCode || 0
+      // Prova a leggere la versione dal plugin nativo
+      if (!localCode && pluginRef.current) {
+        try {
+          const v = await pluginRef.current.getVersionInfo()
+          setInstalled(v); localCode = v.versionCode
+        } catch { /* plugin non disponibile */ }
+      }
+      const res = await fetch('https://dash-casa.vercel.app/version.json?_t=' + Date.now())
+      if (!res.ok) throw new Error('Server non raggiungibile')
+      const info = await res.json()
+      setRemote(info)
+      if (info.versionCode > localCode) {
+        setStatus('available')
+      } else {
+        setStatus('uptodate')
+        toast('Hai già l\'ultima versione!')
+      }
+    } catch (e) {
+      setError(e?.message || 'Errore'); setStatus('error')
+    }
+  }
+
+  const startDownload = async () => {
+    if (!remote?.apkUrl) return
+    // Se il plugin nativo è disponibile, usa il download in-app
+    if (pluginRef.current?.downloadAndInstall) {
+      setStatus('downloading'); setProgress(0); setError(null)
+      try {
+        await pluginRef.current.downloadAndInstall({ url: remote.apkUrl })
+      } catch (e) {
+        setError(e?.message || 'Download fallito'); setStatus('error')
+      }
+    } else {
+      // Fallback: apri il link nel browser di sistema
+      window.open(remote.apkUrl, '_system')
+    }
+  }
+
+  return (
+    <div>
+      <div style={{display:'flex',alignItems:'center',gap:12,padding:14,background:t.tagBg,borderRadius:12,marginBottom:12}}>
+        <div style={{width:40,height:40,borderRadius:'50%',background:status==='available'?'#3B82F615':'#10B98115',border:`2px solid ${status==='available'?'#3B82F6':'#10B981'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,color:status==='available'?'#3B82F6':'#10B981'}}>
+          <Fa icon={status==='available'?'fa-solid fa-download':'fa-solid fa-mobile-screen-button'} />
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:14,fontWeight:600,color:t.text}}>
+            {installed ? `Versione installata: v${installed.versionName} (build ${installed.versionCode})` : isNative ? 'Versione APK corrente' : 'Versione web'}
+          </div>
+          <div style={{fontSize:11,color:t.textMut}}>
+            {status==='uptodate' ? '✅ App aggiornata all\'ultima versione'
+             : status==='available' ? `🆕 Disponibile v${remote?.versionName} — ${remote?.releaseNotes||''}`
+             : status==='checking' ? '🔄 Controllo in corso...'
+             : status==='downloading' ? `⬇️ Download in corso... ${progress}%`
+             : status==='error' ? `❌ ${error}`
+             : 'Tocca "Verifica" per controllare aggiornamenti'}
+          </div>
+        </div>
+      </div>
+      {/* Progress bar durante download */}
+      {status==='downloading' && (
+        <div style={{height:4,borderRadius:2,background:t.tagBg,overflow:'hidden',marginBottom:12}}>
+          <motion.div initial={{width:0}} animate={{width:`${progress}%`}} transition={{duration:0.3}}
+            style={{height:'100%',borderRadius:2,background:'linear-gradient(90deg,#3B82F6,#60A5FA)'}} />
+        </div>
+      )}
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        {(status==='idle'||status==='uptodate'||status==='error') && (
+          <motion.button whileTap={{scale:0.95}} onClick={checkForUpdate}
+            style={{padding:'10px 20px',background:'#3B82F6',color:'white',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
+            <Fa icon='fa-solid fa-magnifying-glass' style={{marginRight:6}} />Verifica aggiornamenti
+          </motion.button>
+        )}
+        {status==='checking' && (
+          <div style={{padding:'10px 20px',background:t.tagBg,color:t.textMut,borderRadius:8,fontSize:13,fontWeight:600}}>
+            <Fa icon='fa-solid fa-spinner fa-spin' style={{marginRight:6}} />Controllo...
+          </div>
+        )}
+        {status==='available' && (
+          <motion.button whileTap={{scale:0.95}} onClick={startDownload}
+            style={{padding:'10px 20px',background:'#10B981',color:'white',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
+            <Fa icon='fa-solid fa-download' style={{marginRight:6}} />{pluginRef.current ? `Scarica e installa v${remote?.versionName}` : `Scarica APK v${remote?.versionName}`}
+          </motion.button>
+        )}
+        {status==='error' && (
+          <motion.button whileTap={{scale:0.95}} onClick={startDownload}
+            style={{padding:'10px 20px',background:'#EF4444',color:'white',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
+            <Fa icon='fa-solid fa-rotate-right' style={{marginRight:6}} />Riprova download
+          </motion.button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── IMPOSTAZIONI (categorie, backup, ecc.) ────────────────────────────────────
 function ImpostazioniTab({ data, updateData, onResetSetup, user, onLogout }) {
   const t = useT(); const S = makeS(t); const toast = useToast()
@@ -4326,6 +4446,12 @@ function ImpostazioniTab({ data, updateData, onResetSetup, user, onLogout }) {
         )}
       </div>
 
+      {/* Aggiornamento App */}
+      <div style={{...S.card,marginBottom:16}}>
+        <h3 style={{margin:'0 0 12px',fontSize:15,fontWeight:600,color:t.text}}><Fa icon='fa-solid fa-arrow-up-right-dots' style={{marginRight:6}} />Aggiornamento App</h3>
+        <VersionCheckCard theme={t} S={S} />
+      </div>
+
       {/* Account */}
       {user && (
         <div style={S.card}>
@@ -4358,6 +4484,115 @@ function ImpostazioniTab({ data, updateData, onResetSetup, user, onLogout }) {
             style={{padding:'10px 20px',background:'#3B82F6',color:'white',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}><Fa icon='fa-solid fa-wand-magic-sparkles' style={{marginRight:6}} />Setup guidato</motion.button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── PERMISSIONS SCREEN (primo avvio su nativo) ─────────────────────────────────
+function PermissionsScreen({ onComplete }) {
+  const isNative = !!window.Capacitor?.isNativePlatform?.()
+  const perms = [
+    { key: 'notifications', icon: 'fa-solid fa-bell', label: 'Notifiche', desc: 'Ricevi avvisi su scadenze, budget e aggiornamenti', color: '#F59E0B' },
+    { key: 'camera', icon: 'fa-solid fa-camera', label: 'Fotocamera', desc: 'Scansiona scontrini con l\'OCR integrato', color: '#3B82F6' },
+    ...(isNative ? [{ key: 'install', icon: 'fa-solid fa-download', label: 'Installa aggiornamenti', desc: 'Permetti l\'installazione di nuove versioni dell\'app', color: '#10B981' }] : []),
+  ]
+
+  const [granted, setGranted] = useState({})
+  const [requesting, setRequesting] = useState(null)
+
+  const requestPerm = async (key) => {
+    setRequesting(key)
+    try {
+      if (key === 'notifications') {
+        const LN = window.Capacitor?.Plugins?.LocalNotifications
+        if (LN) {
+          const res = await LN.requestPermissions()
+          setGranted(g => ({ ...g, [key]: res?.display === 'granted' }))
+        } else if ('Notification' in window) {
+          const res = await Notification.requestPermission()
+          setGranted(g => ({ ...g, [key]: res === 'granted' }))
+        }
+      } else if (key === 'camera') {
+        const Cam = window.Capacitor?.Plugins?.Camera
+        if (Cam) {
+          const res = await Cam.requestPermissions()
+          setGranted(g => ({ ...g, [key]: res?.camera === 'granted' }))
+        } else {
+          // Web: il permesso viene chiesto al primo utilizzo
+          setGranted(g => ({ ...g, [key]: true }))
+        }
+      } else if (key === 'install') {
+        // REQUEST_INSTALL_PACKAGES non ha un prompt runtime — è nel manifest
+        setGranted(g => ({ ...g, [key]: true }))
+      }
+    } catch {
+      setGranted(g => ({ ...g, [key]: false }))
+    }
+    setRequesting(null)
+  }
+
+  const allDone = perms.every(p => granted[p.key] !== undefined)
+
+  return (
+    <div style={{minHeight:'100vh',background:'linear-gradient(180deg,#0F172A 0%,#1E293B 100%)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'24px 20px'}}>
+      <motion.div initial={{scale:0.8,opacity:0}} animate={{scale:1,opacity:1}} transition={{type:'spring',stiffness:200,damping:20}}
+        style={{width:'100%',maxWidth:400}}>
+        {/* Header */}
+        <div style={{textAlign:'center',marginBottom:32}}>
+          <motion.div initial={{y:-20}} animate={{y:0}} transition={{delay:0.1}}
+            style={{width:64,height:64,borderRadius:20,background:'linear-gradient(135deg,#3B82F6,#1D4ED8)',display:'inline-flex',alignItems:'center',justifyContent:'center',marginBottom:16,boxShadow:'0 8px 32px rgba(59,130,246,0.3)'}}>
+            <Fa icon='fa-solid fa-shield-check' style={{fontSize:28,color:'white'}} />
+          </motion.div>
+          <h2 style={{margin:'0 0 8px',fontSize:22,fontWeight:700,color:'#F1F5F9'}}>Autorizzazioni</h2>
+          <p style={{margin:0,fontSize:13,color:'#94A3B8',lineHeight:1.5}}>
+            Concedi i permessi per utilizzare tutte le funzionalità dell'app
+          </p>
+        </div>
+
+        {/* Permessi */}
+        <div style={{display:'flex',flexDirection:'column',gap:12,marginBottom:28}}>
+          {perms.map((p, i) => (
+            <motion.div key={p.key} initial={{x:-30,opacity:0}} animate={{x:0,opacity:1}} transition={{delay:0.15*(i+1)}}
+              style={{background:'#1E293B',border:'1px solid #334155',borderRadius:16,padding:'16px 18px',display:'flex',alignItems:'center',gap:14}}>
+              <div style={{width:44,height:44,borderRadius:12,background:`${p.color}15`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <Fa icon={p.icon} style={{fontSize:18,color:p.color}} />
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:600,color:'#F1F5F9',marginBottom:2}}>{p.label}</div>
+                <div style={{fontSize:11,color:'#94A3B8',lineHeight:1.4}}>{p.desc}</div>
+              </div>
+              {granted[p.key] === undefined ? (
+                <motion.button whileTap={{scale:0.9}} onClick={() => requestPerm(p.key)} disabled={requesting === p.key}
+                  style={{padding:'8px 14px',borderRadius:10,background:p.color,border:'none',cursor:'pointer',color:'white',fontSize:12,fontWeight:700,flexShrink:0,opacity:requesting===p.key?0.6:1}}>
+                  {requesting === p.key ? <Fa icon='fa-solid fa-spinner fa-spin' /> : 'Consenti'}
+                </motion.button>
+              ) : granted[p.key] ? (
+                <div style={{width:32,height:32,borderRadius:'50%',background:'#10B98120',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <Fa icon='fa-solid fa-check' style={{color:'#10B981',fontSize:14}} />
+                </div>
+              ) : (
+                <div style={{width:32,height:32,borderRadius:'50%',background:'#EF444420',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <Fa icon='fa-solid fa-xmark' style={{color:'#EF4444',fontSize:14}} />
+                </div>
+              )}
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Pulsante continua */}
+        <motion.button whileTap={{scale:0.95}}
+          onClick={onComplete}
+          style={{width:'100%',padding:'14px 24px',borderRadius:14,border:'none',cursor:'pointer',fontSize:15,fontWeight:700,
+            background: allDone ? 'linear-gradient(135deg,#3B82F6,#1D4ED8)' : '#334155',
+            color: allDone ? 'white' : '#94A3B8',
+            boxShadow: allDone ? '0 4px 20px rgba(59,130,246,0.3)' : 'none',
+            transition:'all 0.3s'}}>
+          {allDone ? 'Continua' : 'Salta per ora'}
+        </motion.button>
+        <p style={{textAlign:'center',margin:'12px 0 0',fontSize:11,color:'#64748B'}}>
+          Puoi modificare i permessi in qualsiasi momento dalle impostazioni del dispositivo
+        </p>
+      </motion.div>
     </div>
   )
 }
@@ -5057,6 +5292,9 @@ export default function DashboardCasa() {
   const [authLoading, setAuthLoading] = useState(true)
   const [pinUnlocked, setPinUnlocked] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [permsDone, setPermsDone] = useState(() => {
+    try { return localStorage.getItem('casa-perms-done') === '1' } catch { return false }
+  })
   const importRef       = useRef(null)
   const [showMembri, setShowMembri] = useState(false)
   const [nuovoMembro, setNuovoMembro] = useState('')
@@ -5398,7 +5636,7 @@ export default function DashboardCasa() {
     try {
       const meseCorr = mc()
       const speseMese = totMese(data.spese, meseCorr)
-      const prossime = data.scadenze.filter(s=>!s.gestita).sort((a,b)=>new Date(a.data)-new Date(b.data)).slice(0,3)
+      const prossime = data.scadenze.filter(s=>!s.gestita).sort((a,b)=>new Date(a.data)-new Date(b.data)).slice(0,5)
       const oggi = new Date()
       const fmt = s => {
         const gg = Math.ceil((new Date(s.data)-oggi)/864e5)
@@ -5424,36 +5662,99 @@ export default function DashboardCasa() {
         scadenza1: prossime[0]?fmt(prossime[0]):'',
         scadenza2: prossime[1]?fmt(prossime[1]):'',
         scadenza3: prossime[2]?fmt(prossime[2]):'',
+        scadenza4: prossime[3]?fmt(prossime[3]):'',
+        scadenza5: prossime[4]?fmt(prossime[4]):'',
         ultimaSpesaDesc: ultima ? ultima.descrizione : '',
         ultimaSpesaImporto: ultima ? `€ ${(+ultima.importo).toFixed(2)}` : '',
         budgetGiornaliero: budgetGiorn > 0 ? `€ ${budgetGiorn.toFixed(0)}/giorno` : '',
         attivita1: attAperte[0] ? fmtAtt(attAperte[0]) : '',
         attivita2: attAperte[1] ? fmtAtt(attAperte[1]) : '',
         attivita3: attAperte[2] ? fmtAtt(attAperte[2]) : '',
+        attivita4: attAperte[3] ? fmtAtt(attAperte[3]) : '',
+        attivita5: attAperte[4] ? fmtAtt(attAperte[4]) : '',
         attivitaAperte: attAperte.length,
+        risparmio: (data.entrateMensili||0) - speseMese,
+        goalRisparmio: data.goalRisparmio||0,
       })
     } catch(e) { /* widget non disponibile su web */ }
-  }, [data.spese, data.budget, data.scadenze, data.attivita])
+  }, [data.spese, data.budget, data.scadenze, data.attivita, data.entrateMensili, data.goalRisparmio])
 
-  // APK auto-update checker (solo su piattaforma nativa)
-  const [apkUpdate, setApkUpdate] = useState(null) // {versionName, releaseNotes, apkUrl, forceUpdate}
+  // APK auto-update completo: rileva versione installata, download in-app, notifica push
+  const [apkUpdate, setApkUpdate] = useState(null)
+  const [downloadProgress, setDownloadProgress] = useState(null)
+  const [downloadError, setDownloadError] = useState(null)
   useEffect(() => {
     if (!window.Capacitor?.isNativePlatform?.()) return
-    const APP_VERSION_CODE = 2 // deve corrispondere a versionCode in build.gradle
+    const AppUpdate = window.Capacitor?.Plugins?.AppUpdate || null
+
+    // Listener progresso download (solo se plugin disponibile)
+    let progressListener = null
+    try {
+      if (AppUpdate?.addListener) {
+        progressListener = AppUpdate.addListener('downloadProgress', (ev) => {
+          setDownloadProgress(ev.progress)
+        })
+      }
+    } catch {}
+
+    let installedVersionCode = 0
     const checkUpdate = async () => {
       try {
+        // Prova a leggere versionCode dal plugin nativo
+        if (installedVersionCode === 0 && AppUpdate?.getVersionInfo) {
+          try {
+            const vInfo = await AppUpdate.getVersionInfo()
+            installedVersionCode = vInfo.versionCode || 0
+          } catch { /* plugin non disponibile in questa APK */ }
+        }
         const res = await fetch('https://dash-casa.vercel.app/version.json?_t=' + Date.now())
         if (!res.ok) return
         const info = await res.json()
-        if (info.versionCode > APP_VERSION_CODE) {
-          setApkUpdate(info)
+        if (info.versionCode > installedVersionCode) {
+          setApkUpdate({ ...info, remoteCode: info.versionCode })
+          // Invia notifica locale push
+          try {
+            const LN = window.Capacitor?.Plugins?.LocalNotifications
+            if (LN) {
+              await LN.requestPermissions()
+              await LN.schedule({ notifications: [{
+                title: '🏠 Casa Nostra — Aggiornamento v' + info.versionName,
+                body: info.releaseNotes || 'Nuova versione disponibile! Apri l\'app per aggiornare.',
+                id: 9999,
+                schedule: { at: new Date(Date.now() + 2000) },
+                sound: 'default',
+                smallIcon: 'ic_launcher_foreground',
+                actionTypeId: 'UPDATE_ACTION'
+              }]})
+            }
+          } catch { /* notifica non essenziale */ }
+        } else {
+          setApkUpdate(null)
         }
       } catch { /* offline o errore, ignora */ }
     }
     checkUpdate()
-    const id = setInterval(checkUpdate, 3600000) // controlla ogni ora
-    return () => clearInterval(id)
+    const id = setInterval(checkUpdate, 3600000)
+    return () => { clearInterval(id); try { progressListener?.remove?.() } catch {} }
   }, [])
+
+  const startApkDownload = async () => {
+    if (!apkUpdate?.apkUrl) return
+    const AppUpdate = window.Capacitor?.Plugins?.AppUpdate || null
+    if (AppUpdate?.downloadAndInstall) {
+      setDownloadProgress(0)
+      setDownloadError(null)
+      try {
+        await AppUpdate.downloadAndInstall({ url: apkUpdate.apkUrl })
+      } catch (e) {
+        setDownloadError(e?.message || 'Download fallito')
+        setDownloadProgress(null)
+      }
+    } else {
+      // Fallback: apri download nel browser
+      window.open(apkUpdate.apkUrl, '_system')
+    }
+  }
 
   // iOS PWA install banner
   const [showIOSInstall, setShowIOSInstall] = useState(false)
@@ -5584,6 +5885,7 @@ export default function DashboardCasa() {
   )
 
   if (!user) return <AuthScreen onAuth={handleAuth} />
+  if (!permsDone) return <PermissionsScreen onComplete={() => { try { localStorage.setItem('casa-perms-done', '1') } catch {}; setPermsDone(true) }} />
   if (!setupDone) return <SetupWizard onComplete={handleSetupComplete} />
 
   // PIN Lock — se impostato e non ancora sbloccato
@@ -5647,22 +5949,43 @@ export default function DashboardCasa() {
             <motion.div initial={{y:-80,opacity:0}} animate={{y:0,opacity:1}} exit={{y:-80,opacity:0}} transition={{type:'spring',stiffness:300,damping:30}}
               style={{position:'fixed',top:0,left:0,right:0,zIndex:10001,padding:'calc(env(safe-area-inset-top, 8px) + 8px) 16px 12px',
                 background:'linear-gradient(135deg,#1E40AF,#0F172A)',borderBottom:'1px solid #3B82F6',
-                display:'flex',alignItems:'center',gap:12,boxShadow:'0 4px 20px rgba(0,0,0,0.4)'}}>
-              <div style={{width:44,height:44,borderRadius:12,background:'#3B82F620',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                <Fa icon='fa-solid fa-download' style={{fontSize:20,color:'#60A5FA'}} />
+                boxShadow:'0 4px 20px rgba(0,0,0,0.4)'}}>
+              <div style={{display:'flex',alignItems:'center',gap:12}}>
+                <div style={{width:44,height:44,borderRadius:12,background:'#3B82F620',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <Fa icon={downloadProgress !== null ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-download'} style={{fontSize:20,color:'#60A5FA'}} />
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:700,color:'#F1F5F9',marginBottom:2}}>Aggiornamento v{apkUpdate.versionName}</div>
+                  <div style={{fontSize:11,color:'#94A3B8',lineHeight:1.3}}>
+                    {downloadError ? <span style={{color:'#F87171'}}>{downloadError}</span>
+                      : downloadProgress !== null ? `Download in corso... ${downloadProgress}%`
+                      : apkUpdate.releaseNotes || 'Nuova versione disponibile'}
+                  </div>
+                </div>
+                {downloadProgress === null && (
+                  <motion.button whileTap={{scale:0.93}} onClick={startApkDownload}
+                    style={{padding:'8px 14px',borderRadius:10,background:'#3B82F6',border:'none',cursor:'pointer',color:'#fff',fontSize:12,fontWeight:700,flexShrink:0}}>
+                    Aggiorna
+                  </motion.button>
+                )}
+                {!apkUpdate.forceUpdate && downloadProgress === null && (
+                  <motion.button whileTap={{scale:0.9}} onClick={()=>setApkUpdate(null)}
+                    style={{width:28,height:28,borderRadius:'50%',background:'#1E3A5F',border:'none',cursor:'pointer',color:'#94A3B8',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                    <Fa icon='fa-solid fa-xmark' />
+                  </motion.button>
+                )}
               </div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13,fontWeight:700,color:'#F1F5F9',marginBottom:2}}>Aggiornamento v{apkUpdate.versionName}</div>
-                <div style={{fontSize:11,color:'#94A3B8',lineHeight:1.3}}>{apkUpdate.releaseNotes||'Nuova versione disponibile'}</div>
-              </div>
-              <motion.button whileTap={{scale:0.93}} onClick={()=>window.open(apkUpdate.apkUrl,'_system')}
-                style={{padding:'8px 14px',borderRadius:10,background:'#3B82F6',border:'none',cursor:'pointer',color:'#fff',fontSize:12,fontWeight:700,flexShrink:0}}>
-                Aggiorna
-              </motion.button>
-              {!apkUpdate.forceUpdate && (
-                <motion.button whileTap={{scale:0.9}} onClick={()=>setApkUpdate(null)}
-                  style={{width:28,height:28,borderRadius:'50%',background:'#1E3A5F',border:'none',cursor:'pointer',color:'#94A3B8',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                  <Fa icon='fa-solid fa-xmark' />
+              {/* Progress bar */}
+              {downloadProgress !== null && (
+                <div style={{marginTop:8,height:4,borderRadius:2,background:'#1E3A5F',overflow:'hidden'}}>
+                  <motion.div initial={{width:0}} animate={{width:`${downloadProgress}%`}}
+                    transition={{duration:0.3}} style={{height:'100%',borderRadius:2,background:'linear-gradient(90deg,#3B82F6,#60A5FA)'}} />
+                </div>
+              )}
+              {downloadError && (
+                <motion.button whileTap={{scale:0.95}} onClick={()=>{setDownloadError(null);startApkDownload()}}
+                  style={{marginTop:6,padding:'4px 12px',borderRadius:8,background:'#EF444420',border:'1px solid #EF4444',color:'#F87171',fontSize:11,fontWeight:600,cursor:'pointer'}}>
+                  <Fa icon='fa-solid fa-rotate-right' style={{marginRight:4}} /> Riprova
                 </motion.button>
               )}
             </motion.div>
